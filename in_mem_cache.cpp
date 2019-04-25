@@ -10,32 +10,31 @@
  * IN MEMORY CACHE
  */
 
-cache::InMemCache::InMemCache() {
+cache::DummyCache::DummyCache() {
     _max_cache_size = 900000; // num of elements
-    _cache.reserve(0);
     // Metrics
     _hits = 0;
     _misses = 0;
     _keys = 0;
 }
 
-void cache::InMemCache::add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) {}
+void cache::DummyCache::add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) {}
 
-void cache::InMemCache::evict() {}
+void cache::DummyCache::evict() {}
 
-std::unordered_map<std::string, std::string>::iterator cache::InMemCache::find(const Read &item) {
+std::unordered_map<std::string, std::string>::iterator cache::DummyCache::find(const Read &item) {
     return _cache.find(item[1]);
 }
 
-std::unordered_map<std::string, std::string>::iterator cache::InMemCache::end() {
+std::unordered_map<std::string, std::string>::iterator cache::DummyCache::end() {
     return _cache.end();
 }
 
-std::string& cache::InMemCache::at(const Read &item) {
+std::string& cache::DummyCache::at(const Read &item) {
     return _cache.at(item[1]);
 }
 
-std::string &cache::InMemCache::operator[](Read &item) {
+std::string &cache::DummyCache::operator[](Read &item) {
     return (std::string &) "";
 }
 

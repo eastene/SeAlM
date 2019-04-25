@@ -13,6 +13,7 @@
 #include "types.hpp"
 
 namespace cache {
+
     class InMemCache {
     private:
         std::unordered_map<std::string, std::string> _cache;
@@ -24,11 +25,9 @@ namespace cache {
         uint32_t _keys;
     public:
 
-        InMemCache();
+        virtual void evict() = 0;
 
-        virtual void evict();
-
-        virtual void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments);
+        virtual void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) = 0;
 
         double get_hit_rate() {
             return _misses > 0 ? _hits / (_misses + _hits) : 0;
@@ -36,19 +35,41 @@ namespace cache {
 
         uint64_t get_hits() { return _hits; }
 
-        virtual std::unordered_map<std::string, std::string>::iterator find(const Read &item);
+        virtual std::unordered_map<std::string, std::string>::iterator find(const Read &item) = 0;
 
-        virtual std::unordered_map<std::string, std::string>::iterator end();
+        virtual std::unordered_map<std::string, std::string>::iterator end() = 0;
 
-        virtual std::string &at(const Read &item);
+        virtual std::string &at(const Read &item) = 0;
 
-        virtual std::string &operator[](Read &item);
+        virtual std::string &operator[](Read &item) = 0;
 
         friend std::ostream &operator<<(std::ostream &output, const InMemCache &C) {
             output << "Hits: " << C._hits << " Misses: " << C._misses << " Size: " << C._keys;
             return output;
         }
     };
+
+    class DummyCache : public InMemCache {
+    private:
+        std::unordered_map<std::string, std::string> _cache;
+
+    public:
+
+        DummyCache();
+
+        void evict() override;
+
+        void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) override;
+
+        std::unordered_map<std::string, std::string>::iterator find(const Read &item) override;
+
+        std::unordered_map<std::string, std::string>::iterator end() override;
+
+        std::string &at(const Read &item) override;
+
+        std::string &operator[](Read &item) override;
+    };
+
 
     class LRUCache : public InMemCache {
     protected:

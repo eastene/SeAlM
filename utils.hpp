@@ -16,8 +16,13 @@
 namespace bp = boost::process;
 
 uint32_t
-next_batch(std::string &infile, uint32_t batch_size, std::vector<Read> *in_buffer, batch::BatchManager *batch_manager,
-           bool *more_data, uint64_t *seek_pos) {
+next_batch(std::string &infile,
+           uint32_t batch_size,
+           std::vector<Read> *in_buffer,
+           std::shared_ptr<batch::BatchManager> batch_manager,
+           bool *more_data,
+           uint64_t *seek_pos) {
+
     uint32_t reads_seen = 0;
     std::ifstream fin(infile);
     fin.seekg(*seek_pos);
@@ -134,8 +139,7 @@ void write_batch(const std::string &output_file, const std::vector<RedupeRef> ba
     fout.close();
 }
 
-void
-align(std::string &command, std::vector<Read> reduced_batch, std::vector<std::string> *alignments) {
+void align(std::string &command, std::vector<Read> reduced_batch, std::vector<std::string> *alignments) {
     alignments->clear();
     alignments->resize(reduced_batch.size());
     align_batch(command, reduced_batch, alignments);

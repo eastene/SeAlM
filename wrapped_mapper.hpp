@@ -32,6 +32,8 @@ private:
     // extract extra parameters
     uint32_t _batch_size;
     uint32_t _qual_thresh;
+    int _cache_type;
+    int _manager_type;
 
     // derived parameters
     char _input_type; // if input_format in ['.fasta', '.fa'] else 'q'
@@ -39,7 +41,7 @@ private:
     std::string _command;
 
     // batch manager with cache
-    batch::CompressedBatchManager _batch_manager;
+    std::shared_ptr<batch::BatchManager> _batch_manager;
 
     // metrics
     double _total_time;
@@ -63,7 +65,7 @@ public:
         output << "Total reads " << W._reads_seen << "\n";
         output << "   Reads aligned " << W._reads_aligned << "\n";
         output << "Avg Throughput: " << (W._reads_seen / W._align_time) << " r/s\n";
-        output << W._batch_manager;
+        output << *W._batch_manager;
 
         return output;
     }

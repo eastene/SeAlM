@@ -21,6 +21,8 @@ WrappedMapper::WrappedMapper() {
     // extract extra parameters
     _batch_size = 100000;  // batch size of 100000 seems to work best for bt2 for effectiveness of batch-cache
     _qual_thresh = 5225;
+    _cache_type = 0;
+    _manager_type = 0;
     assert(_batch_size > 0);
 
     // derived parameters
@@ -28,7 +30,16 @@ WrappedMapper::WrappedMapper() {
     _read_size = _input_type == 'q' ? 4 : 3;
 
     // batch manager with cache
-    _batch_manager = batch::CompressedBatchManager(_batch_size);
+    switch (_manager_type){
+        case 0:
+            _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
+            break;
+        case 1:
+            _batch_manager = std::make_shared<batch::CompressedBatchManager>(_batch_size, _cache_type);
+            break;
+        default:
+            _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
+    }
 
     // command
     std::stringstream command_s;
@@ -45,8 +56,6 @@ WrappedMapper::WrappedMapper() {
     _reads_seen = 0;
     _reads_aligned = 0;
     _align_calls = 0;
-//        intthroughput_vec;
-//        self._hits_vec = []
 }
 
 void WrappedMapper::run_alignment() {
@@ -78,9 +87,9 @@ void WrappedMapper::run_alignment() {
     std::vector<std::string> out;
     uint64_t seek_pos = 0;
 
-    next_batch(_input_file, _batch_size, &in_buffer, &_batch_manager, &more_data, &seek_pos);
-    std::vector<Read> prev_reduced_batch = _batch_manager.get_reduced_batch();
-    std::vector<RedupeRef> prev_batch = _batch_manager.get_batch();
+    next_batch(_input_file, _batch_size, &in_buffer, _batch_manager, &more_data, &seek_pos);
+    std::vector<Read> prev_reduced_batch = _batch_manager->get_reduced_batch();
+    std::vector<RedupeRef> prev_batch = _batch_manager->get_batch();
 
     long align_start=0, align_end=0;
 
@@ -95,7 +104,7 @@ void WrappedMapper::run_alignment() {
 //            continue
 
         // perform alignment on reduced batch
-        std::thread th_b(next_batch, std::ref(_input_file), _batch_size, &in_buffer, &_batch_manager, &more_data,
+        std::thread th_b(next_batch, std::ref(_input_file), _batch_size, &in_buffer, _batch_manager, &more_data,
                          &seek_pos);
 //        std::thread th_a(align, std::ref(_command), std::ref(prev_reduced_batch), &out);
         align(_command, prev_reduced_batch, &out);
@@ -108,9 +117,9 @@ void WrappedMapper::run_alignment() {
         std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
         th_w.detach();
 
-        _batch_manager.cache_batch(prev_reduced_batch, out);
-        prev_reduced_batch = _batch_manager.get_reduced_batch();
-        prev_batch = _batch_manager.get_batch();
+        _batch_manager->cache_batch(prev_reduced_batch, out);
+        prev_reduced_batch = _batch_manager->get_reduced_batch();
+        prev_batch = _batch_manager->get_batch();
 
         // print metrics
         _align_calls++;
@@ -120,10 +129,10 @@ void WrappedMapper::run_alignment() {
         std::cout << "Batch Align Time: " << ((align_end - align_start) / 1000.00) << "s\n";
         std::cout << "Reads aligned " << _reads_aligned << "\n";
         std::cout << "Total reads " << _reads_seen << "\n";
-        std::cout << _batch_manager;
+        std::cout << *_batch_manager;
         std::cout << "Throughput: " << (_reads_seen / _align_time) << " r/s\n";
         _throughput_vec.emplace_back(_reads_seen / _align_time);
-        _hits_vec.emplace_back(_batch_manager.get_hits());
+        _hits_vec.emplace_back(_batch_manager->get_hits());
     }
 
     if (!prev_batch.empty()) {

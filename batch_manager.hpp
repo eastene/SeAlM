@@ -6,6 +6,7 @@
 #define ALIGNER_CACHE_BATCH_MANAGER_HPP
 
 #include <variant>
+#include <memory>
 #include "types.hpp"
 #include "in_mem_cache.hpp"
 
@@ -23,7 +24,7 @@ namespace batch {
 
     class BatchManager {
     protected:
-        cache::LRUCache _cache;
+        std::unique_ptr<cache::InMemCache> _cache;
         uint32_t _reduced_len;
         uint32_t _total_len;
         uint32_t _batch_size;
@@ -35,9 +36,10 @@ namespace batch {
          * Constructors
          */
 
-        BatchManager() : _reduced_len{0}, _total_len{0}, _batch_size{100000} {};
+        BatchManager() : _reduced_len{0}, _total_len{0},
+                         _batch_size{100000} { _cache = std::make_unique<cache::DummyCache>(); };
 
-        explicit BatchManager(uint32_t batch_size);
+        explicit BatchManager(uint32_t batch_size, int cache_type);
 
         /*
          * Local Cache Operations
@@ -51,7 +53,7 @@ namespace batch {
 
         void cache_batch(std::vector<Read> &reduced_batch, std::vector<std::string> &alignment);
 
-        uint64_t get_hits() { return _cache.get_hits(); }
+        uint64_t get_hits() { return _cache->get_hits(); }
 
         /*
          * Getters/Setters
@@ -66,7 +68,7 @@ namespace batch {
          */
 
         friend std::ostream &operator<<(std::ostream &output, const BatchManager &C) {
-            output << C._cache << std::endl;
+            output << *C._cache << std::endl;
             return output;
         }
     };
@@ -94,7 +96,7 @@ namespace batch {
 
         CompressedBatchManager() = default;
 
-        explicit CompressedBatchManager(uint32_t batch_size) : BatchManager(batch_size) {
+        explicit CompressedBatchManager(uint32_t batch_size, int cache_type) : BatchManager(batch_size, cache_type) {
             _duplicate_finder.reserve(batch_size);
         }
 
