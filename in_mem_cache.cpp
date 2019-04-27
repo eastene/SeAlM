@@ -18,7 +18,7 @@ cache::DummyCache::DummyCache() {
     _keys = 0;
 }
 
-void cache::DummyCache::add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) {}
+void cache::DummyCache::add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) {}
 
 void cache::DummyCache::evict() {}
 
@@ -56,7 +56,7 @@ void cache::LRUCache::evict() {
     _lru_cache.erase(key);
 }
 
-void cache::LRUCache::add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) {
+void cache::LRUCache::add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) {
     assert(batch.size() == alignments.size());
     for (uint32_t i = 0; i < batch.size(); i+=_skip) {
         if (_lru_cache.find(batch[i][1]) == _lru_cache.end()) {

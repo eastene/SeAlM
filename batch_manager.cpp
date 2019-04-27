@@ -51,7 +51,7 @@ void batch::BatchManager::dedupe_batch(std::vector<Read> &batch) {
     _total_len = batch.size();
 }
 
-void batch::BatchManager::cache_batch(std::vector<Read> &reduced_batch, std::vector<std::string> &alignment) {
+void batch::BatchManager::cache_batch(const std::vector<Read> &reduced_batch, const std::vector<std::string> &alignment) {
     _cache->add_batch(reduced_batch, alignment);
 }
 

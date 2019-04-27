@@ -51,7 +51,7 @@ namespace batch {
          * Global Cache Operations
          */
 
-        void cache_batch(std::vector<Read> &reduced_batch, std::vector<std::string> &alignment);
+        void cache_batch(const std::vector<Read> &reduced_batch, const std::vector<std::string> &alignment);
 
         uint64_t get_hits() { return _cache->get_hits(); }
 

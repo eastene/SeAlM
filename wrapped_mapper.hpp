@@ -53,7 +53,7 @@ private:
     std::vector<int> _hits_vec;
 
 public:
-    WrappedMapper();
+    WrappedMapper(CLIOptions &opts);
 
     void run_alignment();
 

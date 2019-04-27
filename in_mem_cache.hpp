@@ -27,7 +27,7 @@ namespace cache {
 
         virtual void evict() = 0;
 
-        virtual void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) = 0;
+        virtual void add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) = 0;
 
         double get_hit_rate() {
             return _misses > 0 ? _hits / (_misses + _hits) : 0;
@@ -59,7 +59,7 @@ namespace cache {
 
         void evict() override;
 
-        void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) override;
+        void add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) override;
 
         std::unordered_map<std::string, std::string>::iterator find(const Read &item) override;
 
@@ -84,7 +84,7 @@ namespace cache {
 
         void evict() override;
 
-        void add_batch(std::vector<Read> &batch, std::vector<std::string> &alignments) override;
+        void add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) override;
 
         std::unordered_map<std::string, std::string>::iterator find(const Read &item) override;
 

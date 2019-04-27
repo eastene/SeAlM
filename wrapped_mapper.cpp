@@ -8,21 +8,21 @@
 #include "wrapped_mapper.hpp"
 #include "utils.hpp"
 
-WrappedMapper::WrappedMapper() {
+WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
-    _input_file = "/home/evan/CLionProjects/aligner_cache/data/Sample_1_concat.fastq";
-    _reference = "/home/evan/CLionProjects/aligner_cache/ref/bt2/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.bowtie_index";
-    _output_file = "/home/evan/CLionProjects/aligner_cache/out.sam";
+    _input_file = opts.input_file;
+    _reference = opts.reference;
+    _output_file = opts.output_file;
     _input_format = _input_file.substr(_input_file.rfind('.') + 1);
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
     //assert (os.path.splitext(self._output_file)[1].lower() == '.sam')
 
     // extract extra parameters
-    _batch_size = 100000;  // batch size of 100000 seems to work best for bt2 for effectiveness of batch-cache
+    _batch_size = opts.batch_size;  // batch size of 100000 seems to work best for bt2 for effectiveness of batch-cache
     _qual_thresh = 5225;
-    _cache_type = 0;
-    _manager_type = 0;
+    _cache_type = opts.cache_type;
+    _manager_type = opts.manager_type;
     assert(_batch_size > 0);
 
     // derived parameters
@@ -42,13 +42,23 @@ WrappedMapper::WrappedMapper() {
     }
 
     // command
-    std::stringstream command_s;
-    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
-    command_s << _input_type;
-    command_s << " -x ";
-    command_s << _reference;
-    command_s << " -U -";
-    _command = command_s.str();
+    if (_cache_type > 0) {
+        std::stringstream command_s;
+        command_s << "bowtie2 --mm --no-hd -p 3 -";
+        command_s << _input_type;
+        command_s << " -x ";
+        command_s << _reference;
+        command_s << " -U -";
+        _command = command_s.str();
+    } else {
+        std::stringstream command_s;
+        command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
+        command_s << _input_type;
+        command_s << " -x ";
+        command_s << _reference;
+        command_s << " -U -";
+        _command = command_s.str();
+    }
 
     // metrics
     _total_time = 0;
@@ -117,7 +127,8 @@ void WrappedMapper::run_alignment() {
         std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
         th_w.detach();
 
-        _batch_manager->cache_batch(prev_reduced_batch, out);
+        std::thread th_c([=]{_batch_manager->cache_batch(prev_reduced_batch, out);});
+
         prev_reduced_batch = _batch_manager->get_reduced_batch();
         prev_batch = _batch_manager->get_batch();
 
