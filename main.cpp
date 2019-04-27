@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
                     opts.input_file = optarg;
                 break;
 
-            case 'r':
+            case 'x':
                 if (optarg)
                     opts.reference = optarg;
                 break;
@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
                 break;
 
             default:
+                std::cout << "Error in: --" << long_options[option_index].name << std::endl;
                 abort ();
         }
     }

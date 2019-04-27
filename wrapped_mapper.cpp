@@ -32,9 +32,11 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // batch manager with cache
     switch (_manager_type){
         case 0:
+            std::cout << "Selecting default batch manager." << std::endl;
             _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
             break;
         case 1:
+            std::cout << "Selecting compressed batch manager." << std::endl;
             _batch_manager = std::make_shared<batch::CompressedBatchManager>(_batch_size, _cache_type);
             break;
         default:
@@ -128,6 +130,7 @@ void WrappedMapper::run_alignment() {
         th_w.detach();
 
         std::thread th_c([=]{_batch_manager->cache_batch(prev_reduced_batch, out);});
+        th_c.detach();
 
         prev_reduced_batch = _batch_manager->get_reduced_batch();
         prev_batch = _batch_manager->get_batch();
