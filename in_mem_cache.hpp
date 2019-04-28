@@ -25,6 +25,8 @@ namespace cache {
         uint32_t _keys;
     public:
 
+        InMemCache():_max_cache_size{900000},_hits{0},_misses{0},_keys{0}{};
+
         virtual void evict() = 0;
 
         virtual void add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) = 0;

@@ -18,10 +18,10 @@ int main(int argc, char** argv) {
                         {"input_file",     required_argument,       0, 'i'},
                         {"reference",  required_argument,       0, 'x'},
                         {"output_file",  required_argument, 0, 's'},
-                        {"metrics_file",  optional_argument, 0, 'e'},
+                        {"metrics_file",  required_argument, 0, 'e'},
                         {"batch_size",  optional_argument, 0, 'b'},
-                        {"manager_type",    optional_argument, 0, 'm'},
-                        {"cache_type",    optional_argument, 0, 'c'},
+                        {"manager_type",    required_argument, 0, 'm'},
+                        {"cache_type",    required_argument, 0, 'c'},
                         {0, 0, 0, 0}
                 };
 

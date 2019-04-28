@@ -44,9 +44,10 @@ std::string &cache::DummyCache::operator[](Read &item) {
  */
 
 cache::LRUCache::LRUCache() : InMemCache() {
-    _order.resize(2*_max_cache_size);
-    _order_lookup.reserve(2*_max_cache_size);
-    _lru_cache.reserve(2*_max_cache_size);
+    // Preallocate space for cache
+    _order.resize(_max_cache_size);
+    _order_lookup.reserve(_max_cache_size);
+    _lru_cache.reserve(_max_cache_size);
 }
 
 void cache::LRUCache::evict() {

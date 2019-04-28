@@ -129,8 +129,10 @@ void WrappedMapper::run_alignment() {
         std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
         th_w.detach();
 
+        // TODO: make this concurrent with write
         std::thread th_c([=]{_batch_manager->cache_batch(prev_reduced_batch, out);});
         th_c.detach();
+        //_batch_manager->cache_batch(prev_reduced_batch, out);
 
         prev_reduced_batch = _batch_manager->get_reduced_batch();
         prev_batch = _batch_manager->get_batch();

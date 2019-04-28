@@ -14,18 +14,18 @@ batch::BatchManager::BatchManager(uint32_t batch_size, int cache_type) {
     switch (cache_type) {
         case 0:
             std::cout << "Selecting no cache." << std::endl;
-            _cache = std::make_unique<cache::DummyCache>();
+            _cache = std::make_shared<cache::DummyCache>();
             break;
         case 1:
             std::cout << "Selecting LRU cache." << std::endl;
-            _cache = std::make_unique<cache::LRUCache>();
+            _cache = std::make_shared<cache::LRUCache>();
             break;
         case 2:
             std::cout << "Selecting MRU cache." << std::endl;
-            _cache = std::make_unique<cache::MRUCache>();
+            _cache = std::make_shared<cache::MRUCache>();
             break;
         default:
-            _cache = std::make_unique<cache::DummyCache>();
+            _cache = std::make_shared<cache::DummyCache>();
             break;
     }
 }

@@ -24,7 +24,7 @@ namespace batch {
 
     class BatchManager {
     protected:
-        std::unique_ptr<cache::InMemCache> _cache;
+        std::shared_ptr<cache::InMemCache> _cache;
         uint32_t _reduced_len;
         uint32_t _total_len;
         uint32_t _batch_size;
