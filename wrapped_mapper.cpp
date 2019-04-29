@@ -30,7 +30,7 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _read_size = _input_type == 'q' ? 4 : 3;
 
     // batch manager with cache
-    switch (_manager_type){
+    switch (_manager_type) {
         case 0:
             std::cout << "Selecting default batch manager." << std::endl;
             _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
@@ -73,9 +73,10 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-    // clear output file
+    // clear or create output file
     std::ofstream fout(_output_file);
     fout << "";
+    fout.close();
 
     // reset metrics
     _reads_aligned = 0;
@@ -103,7 +104,7 @@ void WrappedMapper::run_alignment() {
     std::vector<Read> prev_reduced_batch = _batch_manager->get_reduced_batch();
     std::vector<RedupeRef> prev_batch = _batch_manager->get_batch();
 
-    long align_start=0, align_end=0;
+    long align_start = 0, align_end = 0;
 
     while (more_data) {
         align_start = std::chrono::duration_cast<Mills>(
@@ -120,7 +121,7 @@ void WrappedMapper::run_alignment() {
                          &seek_pos);
 //        std::thread th_a(align, std::ref(_command), std::ref(prev_reduced_batch), &out);
         align(_command, prev_reduced_batch, &out);
-  //      th_a.join();
+        //      th_a.join();
         th_b.join();
 
         // TODO: make this equal to what th_b returns
@@ -129,8 +130,7 @@ void WrappedMapper::run_alignment() {
         std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
         th_w.detach();
 
-        // TODO: make this concurrent with write
-        std::thread th_c([=]{_batch_manager->cache_batch(prev_reduced_batch, out);});
+        std::thread th_c([=] { _batch_manager->cache_batch(prev_reduced_batch, out); });
         th_c.detach();
         //_batch_manager->cache_batch(prev_reduced_batch, out);
 
@@ -146,9 +146,13 @@ void WrappedMapper::run_alignment() {
         std::cout << "Reads aligned " << _reads_aligned << "\n";
         std::cout << "Total reads " << _reads_seen << "\n";
         std::cout << *_batch_manager;
-        std::cout << "Throughput: " << (_reads_seen / _align_time) << " r/s\n";
-        _throughput_vec.emplace_back(_reads_seen / _align_time);
+        std::cout << "Throughput: " << (_batch_size / ((align_end - align_start) / 1000.00)) << " r/s\n";
+        std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
+        std::cout << "----------------------------" << std::endl;
+        _throughput_vec.emplace_back(_batch_size / ((align_end - align_start) / 1000.00));
         _hits_vec.emplace_back(_batch_manager->get_hits());
+        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+        _reads_aligned_vec.emplace_back(_reads_aligned);
     }
 
     if (!prev_batch.empty()) {
@@ -158,8 +162,14 @@ void WrappedMapper::run_alignment() {
         write_batch(_output_file, prev_batch, out);
         _align_calls++;
         _reads_aligned += out.size();
+        _reads_seen += prev_batch.size();
         align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
         _align_time += (align_end - align_start) / 1000.00;
+
+        _throughput_vec.emplace_back(prev_batch.size() / ((align_end - align_start) / 1000.00));
+        _hits_vec.emplace_back(_batch_manager->get_hits());
+        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+        _reads_aligned_vec.emplace_back(_reads_aligned);
     }
 
     long end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -169,9 +179,12 @@ void WrappedMapper::run_alignment() {
 
 std::string WrappedMapper::prepare_log() {
     std::stringstream ss;
-    ss << "Batch,Throughput,Hits" << std::endl;
+    ss << "# batch_size:" <<_batch_size << " manager_type:" << _manager_type << " cache_type:"
+        << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
+    ss << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
     for (uint64_t i = 0; i < _align_calls; i++) {
-        ss << i << "," << _throughput_vec[i] << "," << _hits_vec[i] << std::endl;
+        ss << i << "," << _batch_time_vec[i] << "," << _throughput_vec[i] << "," << _hits_vec[i] << ","
+           << _reads_aligned_vec[i] << std::endl;
     }
 
     return ss.str();
