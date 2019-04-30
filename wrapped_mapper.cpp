@@ -130,8 +130,9 @@ void WrappedMapper::run_alignment() {
         std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
         th_w.detach();
 
+        // TODO: implement lock for cache so this can be detached instead of joining
         std::thread th_c([=] { _batch_manager->cache_batch(prev_reduced_batch, out); });
-        th_c.detach();
+
         //_batch_manager->cache_batch(prev_reduced_batch, out);
 
         prev_reduced_batch = _batch_manager->get_reduced_batch();
@@ -153,6 +154,8 @@ void WrappedMapper::run_alignment() {
         _hits_vec.emplace_back(_batch_manager->get_hits());
         _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
         _reads_aligned_vec.emplace_back(_reads_aligned);
+
+        th_c.join();
     }
 
     if (!prev_batch.empty()) {
