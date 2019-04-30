@@ -30,7 +30,7 @@ std::unordered_map<std::string, std::string>::iterator cache::DummyCache::end() 
     return _cache.end();
 }
 
-std::string& cache::DummyCache::at(const Read &item) {
+std::string &cache::DummyCache::at(const Read &item) {
     return _cache.at(item[1]);
 }
 
@@ -59,7 +59,9 @@ void cache::LRUCache::evict() {
 
 void cache::LRUCache::add_batch(const std::vector<Read> &batch, const std::vector<std::string> &alignments) {
     assert(batch.size() == alignments.size());
-    for (uint32_t i = 0; i < batch.size(); i+=_skip) {
+    for (uint32_t i = 0; i < batch.size(); i += _skip) {
+        //uint64_t s = 0;
+        //if ((s = alignments[i].rfind("NM:i:")) != std::string::npos && alignments[i][s + 5] != '0') {
         if (_lru_cache.find(batch[i][1]) == _lru_cache.end()) {
             if (_lru_cache.size() >= _max_cache_size) {
                 _skip = 50;
@@ -83,7 +85,7 @@ std::unordered_map<std::string, std::string>::iterator cache::LRUCache::end() {
     return _lru_cache.end();
 }
 
-std::string& cache::LRUCache::at(const Read &item) {
+std::string &cache::LRUCache::at(const Read &item) {
     _order.erase(_order_lookup[item[1]]);
     _order.emplace_front(item[1]);
     _order_lookup.insert_or_assign(item[1], _order.begin());

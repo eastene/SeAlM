@@ -7,7 +7,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 set(CMAKE_CXX_FLAGS_RELEASE "-pthread")
 
-find_package (Threads)
+find_package(Threads)
 
 #find_package(Boost 1.65.1 COMPONENTS system REQUIRED)
 #
@@ -21,7 +21,7 @@ find_package (Threads)
 #
 #endif()
 
-add_executable(aligner_cache main.cpp wrapped_mapper.cpp wrapped_mapper.hpp in_mem_cache.cpp in_mem_cache.hpp utils.hpp batch_manager.cpp batch_manager.hpp types.hpp)
+add_executable(aligner_cache main.cpp wrapped_mapper.cpp wrapped_mapper.hpp in_mem_cache.cpp in_mem_cache.hpp utils.hpp batch_manager.cpp batch_manager.hpp types.hpp batch_buckets.cpp batch_buckets.hpp)
 
 #if(Boost_FOUND)
 #

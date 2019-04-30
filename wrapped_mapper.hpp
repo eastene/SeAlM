@@ -22,6 +22,7 @@ class WrappedMapper {
 private:
     // extract necessary parameters
     std::string _input_file;
+    std::vector<std::string> _input_files;
     std::string _reference;
     std::string _output_file;
     std::string _input_format;
@@ -56,6 +57,8 @@ private:
 
 public:
     WrappedMapper(CLIOptions &opts);
+
+    void grepFiles(const std::string &pattern, const std::string &path);
 
     void run_alignment();
 

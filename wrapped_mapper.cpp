@@ -5,6 +5,8 @@
 #include <thread>
 #include <tuple>
 #include <iostream>
+#include <experimental/filesystem>
+#include <regex>
 #include "wrapped_mapper.hpp"
 #include "utils.hpp"
 
@@ -68,6 +70,15 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _reads_seen = 0;
     _reads_aligned = 0;
     _align_calls = 0;
+}
+
+void WrappedMapper::grepFiles(const std::string &pattern, const std::string &path) {
+    for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(path)) {
+        if (regex_match(fs_obj.path().filename().string(), std::regex(pattern)))
+        {
+            _input_files.push_back(fs_obj.path().string());
+        }
+    }
 }
 
 void WrappedMapper::run_alignment() {

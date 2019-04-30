@@ -2,6 +2,7 @@
 // Created by evan on 4/22/19.
 //
 
+#include <algorithm>
 #include "batch_manager.hpp"
 
 batch::BatchManager::BatchManager(uint32_t batch_size, int cache_type) {
@@ -66,6 +67,9 @@ void batch::CompressedBatchManager::dedupe_batch(std::vector<Read> &batch) {
 
     std::string cached_alignment;
     uint32_t i = 0;
+    std::sort(batch.begin(), batch.end(), [](const Read& a, const Read& b) {
+      return a[1] < b[1];
+    });
     for (const Read &read : batch) {
         if (_cache->find(read) != _cache->end()) {
             cached_alignment = _cache->at(read);
