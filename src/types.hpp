@@ -13,6 +13,7 @@
 
 struct CLIOptions {
     std::string input_file;
+    std::string input_file_pattern = "*.fastq";
     std::string reference;
     std::string output_file;
     std::string metrics_file = "metrics.log";

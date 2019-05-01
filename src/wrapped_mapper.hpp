@@ -56,9 +56,9 @@ private:
     std::vector<uint32_t> _reads_aligned_vec;
 
 public:
-    WrappedMapper(CLIOptions &opts);
+    explicit WrappedMapper(CLIOptions &opts);
 
-    void grepFiles(const std::string &pattern, const std::string &path);
+    void grep_files(const std::string &pattern, const std::string &path);
 
     void run_alignment();
 

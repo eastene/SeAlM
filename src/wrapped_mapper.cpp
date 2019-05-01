@@ -12,6 +12,7 @@
 
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
+    grep_files(opts.input_file_pattern, std::experimental::filesystem::current_path());
     _input_file = opts.input_file;
     _reference = opts.reference;
     _output_file = opts.output_file;
@@ -72,12 +73,19 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _align_calls = 0;
 }
 
-void WrappedMapper::grepFiles(const std::string &pattern, const std::string &path) {
+void WrappedMapper::grep_files(const std::string &pattern, const std::string &path) {
+    std::vector<std::string> filenames;
     for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(path)) {
         if (regex_match(fs_obj.path().filename().string(), std::regex(pattern)))
         {
             _input_files.push_back(fs_obj.path().string());
+            filenames.push_back(fs_obj.path().filename().string());
         }
+    }
+
+    std::cout << "Files found matching input pattern:" << std::endl;
+    for (const auto &inp : filenames){
+        std::cout << inp << std::endl;
     }
 }
 

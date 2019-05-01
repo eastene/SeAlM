@@ -21,7 +21,7 @@ find_package(Threads)
 #
 #endif()
 
-add_executable(aligner_cache main.cpp wrapped_mapper.cpp wrapped_mapper.hpp in_mem_cache.cpp in_mem_cache.hpp utils.hpp batch_manager.cpp batch_manager.hpp types.hpp batch_buckets.cpp batch_buckets.hpp)
+add_executable(aligner_cache src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp src/in_mem_cache.cpp src/in_mem_cache.hpp src/utils.hpp src/batch_manager.cpp src/batch_manager.hpp src/types.hpp lib/batch_buckets.cpp lib/batch_buckets.hpp test/test_main.cpp test/test_batch_buckets.cpp)
 
 #if(Boost_FOUND)
 #

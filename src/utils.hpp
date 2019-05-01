@@ -10,7 +10,7 @@
 #include <string>
 #include <sstream>
 #include "wrapped_mapper.hpp"
-#include "external/cpp-subprocess-master/subprocess.hpp"
+#include "../external/cpp-subprocess-master/subprocess.hpp"
 
 
 uint32_t
