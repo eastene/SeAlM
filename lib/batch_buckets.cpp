@@ -24,7 +24,7 @@ uint16_t BatchBuckets<T>::hash_func(const T &data) {
 
 template <typename T>
 std::unique_ptr<std::vector<T>> BatchBuckets<T>::get_bucket() {
-    std::unique_ptr<std::vector<Read>> out = std::move(*_next_bucket);
+    std::unique_ptr<std::vector<T>> out = std::move(*_next_bucket);
     _buckets[_current_chain].pop_back();
     if (_buckets[_current_chain].empty()) {
         _current_chain = *std::max_element(_chain_lengths.begin(), _chain_lengths.end());
@@ -41,7 +41,7 @@ void BatchBuckets<T>::insert(const T &data) {
 
     if (_buffers[i]->size() >= _max_bucket_size) {
         _buckets[i].emplace_front(std::move(_buffers[i]));
-        _buffers[i] = std::make_unique<std::vector<Read>>();
+        _buffers[i] = std::make_unique<std::vector<T>>();
         _chain_lengths[i] = _buckets[i].size();
         _num_buckets++;
     }
