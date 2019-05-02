@@ -4,3 +4,6 @@
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
+
+#include "../src/types.hpp"
+#include "../lib/batch_buckets.hpp"
