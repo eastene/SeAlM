@@ -14,17 +14,16 @@
 #include <fstream>
 #include <chrono>
 
-#include "in_mem_cache.hpp"
+#include "../lib/in_mem_cache.hpp"
 #include "batch_manager.hpp"
 #include "types.hpp"
 
 class WrappedMapper {
 private:
     // extract necessary parameters
-    std::string _input_file;
     std::vector<std::string> _input_files;
     std::string _reference;
-    std::string _output_file;
+    std::vector<std::string> _output_files;
     std::string _input_format;
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])
@@ -42,7 +41,7 @@ private:
     std::string _command;
 
     // batch manager with cache
-    std::shared_ptr<batch::BatchManager> _batch_manager;
+    std::shared_ptr<BatchManager> _batch_manager;
 
     // metrics
     double _total_time;
@@ -54,6 +53,9 @@ private:
     std::vector<int> _hits_vec;
     std::vector<float> _batch_time_vec;
     std::vector<uint32_t> _reads_aligned_vec;
+
+    // private methods
+    void initialize_alignment();
 
 public:
     explicit WrappedMapper(CLIOptions &opts);

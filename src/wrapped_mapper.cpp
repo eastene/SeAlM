@@ -10,13 +10,36 @@
 #include "wrapped_mapper.hpp"
 #include "utils.hpp"
 
+void WrappedMapper::initialize_alignment() {
+    // check each file is readable
+    for (const auto &in_file : _input_files) {
+        std::ofstream fin(in_file);
+        if (!fin){
+            fin.close();
+            std::cout << in_file << " not readable. Aborting." << std::endl;
+            exit(1);
+        }
+        fin.close();
+    }
+
+    // clear or create output files
+    for (const auto &out_file : _output_files) {
+        std::ofstream fout(out_file);
+        fout << "";
+        fout.close();
+    }
+
+    // reset metrics
+    _reads_aligned = 0;
+    _align_time = 0;
+    _reads_seen = 0;
+    _total_time = 0;
+}
+
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
     grep_files(opts.input_file_pattern, std::experimental::filesystem::current_path());
-    _input_file = opts.input_file;
     _reference = opts.reference;
-    _output_file = opts.output_file;
-    _input_format = _input_file.substr(_input_file.rfind('.') + 1);
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
     //assert (os.path.splitext(self._output_file)[1].lower() == '.sam')
@@ -36,14 +59,14 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     switch (_manager_type) {
         case 0:
             std::cout << "Selecting default batch manager." << std::endl;
-            _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<BatchManager>(_batch_size, _cache_type);
             break;
         case 1:
             std::cout << "Selecting compressed batch manager." << std::endl;
-            _batch_manager = std::make_shared<batch::CompressedBatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<CompressedBatchManager>(_batch_size, _cache_type);
             break;
         default:
-            _batch_manager = std::make_shared<batch::BatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<BatchManager>(_batch_size, _cache_type);
     }
 
     // command
@@ -78,8 +101,11 @@ void WrappedMapper::grep_files(const std::string &pattern, const std::string &pa
     for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(path)) {
         if (regex_match(fs_obj.path().filename().string(), std::regex(pattern)))
         {
-            _input_files.push_back(fs_obj.path().string());
-            filenames.push_back(fs_obj.path().filename().string());
+            auto obj_path_mut = fs_obj.path();
+            _input_files.push_back(obj_path_mut.string());
+            _output_files.push_back(obj_path_mut.replace_extension("_wbt2.sam"));
+            _input_format = obj_path_mut.extension();
+            filenames.push_back(obj_path_mut.filename().string());
         }
     }
 
@@ -92,24 +118,7 @@ void WrappedMapper::grep_files(const std::string &pattern, const std::string &pa
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-    // clear or create output file
-    std::ofstream fout(_output_file);
-    fout << "";
-    fout.close();
-
-    // reset metrics
-    _reads_aligned = 0;
-    _align_time = 0;
-    _reads_seen = 0;
-    _total_time = 0;
-
-    // align batches of reads
-    std::ifstream fin(_input_file);
-    if (!fin) {
-        std::cout << _input_file << " not found. Exiting." << std::endl;
-        exit(1);
-    }
-    fin.close();
+    initialize_alignment();
 
     // open process for output writing
     bool more_data = true;
@@ -119,7 +128,7 @@ void WrappedMapper::run_alignment() {
     std::vector<std::string> out;
     uint64_t seek_pos = 0;
 
-    next_batch(_input_file, _batch_size, &in_buffer, _batch_manager, &more_data, &seek_pos);
+    next_batch(_input_files, _batch_size, &in_buffer, _batch_manager, &more_data, &seek_pos);
     std::vector<Read> prev_reduced_batch = _batch_manager->get_reduced_batch();
     std::vector<RedupeRef> prev_batch = _batch_manager->get_batch();
 
