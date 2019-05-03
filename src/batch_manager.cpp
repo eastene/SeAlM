@@ -6,33 +6,17 @@
 #include <cassert>
 #include "batch_manager.hpp"
 
-BatchManager::BatchManager(uint32_t batch_size, int cache_type) {
+template<typename T, typename V, typename C>
+BucketManager<T,V,C>::BucketManager(uint32_t batch_size) {
     _reduced_len = 0;
     _total_len = 0;
     _unique_batch.reserve(batch_size);
     _reduced_batch.resize(batch_size);
     _batch_size = batch_size;
-
-    switch (cache_type) {
-        case 0:
-            std::cout << "Selecting no cache." << std::endl;
-            _cache = std::make_shared<DummyCache<std::string, std::string> >();
-            break;
-        case 1:
-            std::cout << "Selecting LRU cache." << std::endl;
-            _cache = std::make_shared<LRUCache<std::string, std::string> >();
-            break;
-        case 2:
-            std::cout << "Selecting MRU cache." << std::endl;
-            _cache = std::make_shared<MRUCache<std::string, std::string> >();
-            break;
-        default:
-            _cache = std::make_shared<DummyCache<std::string, std::string> >();
-            break;
-    }
 }
 
-void BatchManager::dedupe_batch(std::vector<Read> &batch) {
+template<typename T, typename V, typename C>
+void BucketManager<T,V,C>::dedupe_batch(std::vector<T> &batch) {
     _reduced_len = 0;
     _total_len = 0;
     _unique_batch.clear();
@@ -56,13 +40,13 @@ void BatchManager::dedupe_batch(std::vector<Read> &batch) {
     _total_len = batch.size();
 }
 
-void BatchManager::cache_batch(const std::vector<Read> &reduced_batch, const std::vector<std::string> &alignment) {
+void BucketManager::cache_batch(const std::vector<Read> &reduced_batch, const std::vector<std::string> &alignment) {
     assert(reduced_batch.size() == alignment.size());
     for(uint32_t i = 0; i < reduced_batch.size(); i++)
         _cache->insert(reduced_batch[i][1], alignment[i]);
 }
 
-void CompressedBatchManager::dedupe_batch(std::vector<Read> &batch) {
+void CompressedBucketManager::dedupe_batch(std::vector<Read> &batch) {
     _reduced_len = 0;
     _total_len = 0;
     _unique_batch.clear();

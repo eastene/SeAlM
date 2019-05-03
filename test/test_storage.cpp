@@ -12,7 +12,7 @@
 
 TEST_CASE("single bucket created and consumed correctly" "[batch_buckets]") {
     Read r(4, "");
-    BufferedBatchBuckets<Read> bb;
+    BufferedBuckets<Read> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -78,7 +78,7 @@ TEST_CASE("single bucket created and consumed correctly" "[batch_buckets]") {
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[batch_buckets]") {
     Read r(4, "");
-    BufferedBatchBuckets<Read> bb;
+    BufferedBuckets<Read> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";

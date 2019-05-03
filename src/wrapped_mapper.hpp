@@ -41,7 +41,7 @@ private:
     std::string _command;
 
     // batch manager with cache
-    std::shared_ptr<BatchManager> _batch_manager;
+    std::shared_ptr<BucketManager> _batch_manager;
 
     // metrics
     double _total_time;

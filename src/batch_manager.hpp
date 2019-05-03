@@ -13,17 +13,16 @@
 
 /*
  *
- *  BATCH MANAGER
+ *  BUCKET MANAGER
  *
- *  Constructs a batch, using the global cache when necessary to
- *  reuse existing alignments. (Using with standard InMemCache
- *  will remove all forms of caching)
+ *  Manages any bucket postprocessing after requested
+ *  from buffered storage.
  *
  */
 
 // T-dataType, V-cacheValue, C-Cache
 template<typename T, typename V, typename C>
-class BatchManager {
+class BucketManager {
 protected:
     std::shared_ptr<C> _cache;
     uint32_t _reduced_len;
@@ -37,9 +36,9 @@ public:
      * Constructors
      */
 
-    BatchManager() : _reduced_len{0}, _total_len{0}, _batch_size{50000} {};
+    BucketManager() : _reduced_len{0}, _total_len{0}, _batch_size{50000} {};
 
-    explicit BatchManager(uint32_t batch_size);
+    explicit BucketManager(uint32_t batch_size);
 
     /*
      * Local Cache Operations
@@ -67,7 +66,7 @@ public:
      * Operator Overloads
      */
 
-    friend std::ostream &operator<<(std::ostream &output, const BatchManager &B) {
+    friend std::ostream &operator<<(std::ostream &output, const BucketManager &B) {
         output << *B._cache << std::endl;
         return output;
     }
@@ -81,8 +80,8 @@ public:
  * information necessary to reconstruct the full batch in order.
  *
  */
-
-class CompressedBatchManager : public BatchManager {
+template<typename T, typename V, typename C>
+class CompressedBucketManager : public BucketManager<T,V,C> {
 private:
     /*
      * Hash map used to identify duplicates within a batch
@@ -94,9 +93,9 @@ public:
      * Constructors
      */
 
-    CompressedBatchManager() = default;
+    CompressedBucketManager() = default;
 
-    explicit CompressedBatchManager(uint32_t batch_size, int cache_type) : BatchManager(batch_size, cache_type) {
+    explicit CompressedBucketManager(uint32_t batch_size, int cache_type) : BucketManager(batch_size, cache_type) {
         _duplicate_finder.reserve(batch_size);
     }
 

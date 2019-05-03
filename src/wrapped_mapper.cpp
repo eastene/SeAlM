@@ -59,14 +59,14 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     switch (_manager_type) {
         case 0:
             std::cout << "Selecting default batch manager." << std::endl;
-            _batch_manager = std::make_shared<BatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<BucketManager>(_batch_size, _cache_type);
             break;
         case 1:
             std::cout << "Selecting compressed batch manager." << std::endl;
-            _batch_manager = std::make_shared<CompressedBatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<CompressedBucketManager>(_batch_size, _cache_type);
             break;
         default:
-            _batch_manager = std::make_shared<BatchManager>(_batch_size, _cache_type);
+            _batch_manager = std::make_shared<BucketManager>(_batch_size, _cache_type);
     }
 
     // command
