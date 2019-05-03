@@ -12,7 +12,16 @@
 #include <fstream>
 #include "storage.hpp"
 
-class IOStreamExhaustedException;
+/*
+ * IO EXCEPTIONS
+ */
+
+class IOStreamExhaustedException : public std::exception {
+};
+
+class TimeoutException : public std::exception {
+
+};
 
 /*
  *
@@ -31,7 +40,7 @@ template<typename T, typename M>
 class InterleavedIOScheduler {
 private:
     // IO handles
-    std::vector<std::string> _inputs;
+    std::list<std::string> _inputs;
     std::vector<uint64_t> _seek_poses;
     std::vector<std::string> _outputs;
     uint64_t _read_head;
@@ -61,9 +70,9 @@ public:
      */
     bool begin_reading();
 
-    std::vector<T> request_batch();
-
     bool stop_reading();
+
+    std::vector<T> request_batch();
 
     /*
      * Output functions
@@ -93,12 +102,11 @@ T InterleavedIOScheduler<T, M>::parse_fn() {
     std::getline(fin, line);
     // TODO define parse function as lambda
     if (fin.eof()) {
-        throw new IOStreamExhaustedException();
+        throw IOStreamExhaustedException();
     }
 
     _seek_poses[_read_head] = fin.tellg();
     fin.close();
-    _read_head = (_read_head + 1) % _max_io_interleave;
 }
 
 template<typename T, typename M>
@@ -107,7 +115,10 @@ void InterleavedIOScheduler<T, M>::read_until_done(std::atomic_bool &cancel) {
         try {
             // TODO add timeout to reading
             _in_buff.insert(parse_fn(), cancel);
+        } catch (IOStreamExhaustedException &iosee) {
+            _inputs.remove(_read_head);
         }
+        _read_head = (_read_head + 1) % _max_io_interleave;
     }
 }
 
@@ -121,12 +132,13 @@ bool InterleavedIOScheduler<T, M>::stop_reading() {
     _halt_flag = false;
 }
 
-/*
- * IO EXCEPTIONS
- */
-
-class IOStreamExhaustedException : public std::exception {
-    IOStreamExhaustedException() = default;
-};
+template<typename T, typename M>
+std::vector<T> InterleavedIOScheduler<T, M>::request_batch() {
+    std::unique_ptr<std::vector<T>> bucket = _in_buff.next_bucket_async(std::chrono::milliseconds(500));
+    if (bucket == nullptr) {
+        throw TimeoutException();
+    }
+    return bucket.get();
+}
 
 #endif //ALIGNER_CACHE_IO_HPP

@@ -2,7 +2,7 @@
 // Created by evan on 5/2/19.
 //
 
-#include <Catch2/catch.hpp>
+#include <catch2/catch.hpp>
 
 #include "../lib/cache.hpp"
 
