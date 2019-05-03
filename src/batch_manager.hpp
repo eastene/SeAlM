@@ -81,7 +81,7 @@ public:
  *
  */
 template<typename T, typename V, typename C>
-class CompressedBucketManager : public BucketManager<T,V,C> {
+class CompressedBucketManager : public BucketManager<T, V, C> {
 private:
     /*
      * Hash map used to identify duplicates within a batch
@@ -95,7 +95,7 @@ public:
 
     CompressedBucketManager() = default;
 
-    explicit CompressedBucketManager(uint32_t batch_size, int cache_type) : BucketManager(batch_size, cache_type) {
+    explicit CompressedBucketManager(uint32_t batch_size) : BucketManager<T, V, C>(batch_size) {
         _duplicate_finder.reserve(batch_size);
     }
 

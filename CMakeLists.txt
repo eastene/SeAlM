@@ -29,4 +29,4 @@ add_executable(aligner_cache src/main.cpp src/wrapped_mapper.cpp src/wrapped_map
 add_executable(test_aligner_cache test/test_main.cpp test/test_storage.cpp lib/storage.hpp test/test_cache.cpp lib/io.hpp test/test_io.cpp)
 
 target_link_libraries(aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs cpp-subprocess)
-target_link_libraries(test_aligner_cache ${CMAKE_THREAD_LIBS_INIT} Catch2)
+target_link_libraries(test_aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs Catch2)

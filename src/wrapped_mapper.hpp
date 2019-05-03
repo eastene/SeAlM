@@ -17,6 +17,7 @@
 #include "../lib/cache.hpp"
 #include "batch_manager.hpp"
 #include "types.hpp"
+#include "../lib/io.hpp"
 
 class WrappedMapper {
 private:
@@ -40,8 +41,11 @@ private:
     uint8_t _read_size;
     std::string _command;
 
+    // IO Scheduler
+    InterleavedIOScheduler<Read, BucketManager<Read, std::string, InMemCache<std::string, std::string> > > io;
+
     // batch manager with cache
-    std::shared_ptr<BucketManager> _batch_manager;
+//    std::shared_ptr<BucketManager> _batch_manager;
 
     // metrics
     double _total_time;
@@ -60,8 +64,6 @@ private:
 public:
     explicit WrappedMapper(CLIOptions &opts);
 
-    void grep_files(const std::string &pattern, const std::string &path);
-
     void run_alignment();
 
     std::string prepare_log();
@@ -72,7 +74,7 @@ public:
         output << "Total reads " << W._reads_seen << "\n";
         output << "   Reads aligned " << W._reads_aligned << "\n";
         output << "Avg Throughput: " << (W._reads_seen / W._align_time) << " r/s\n";
-        output << *W._batch_manager;
+//        output << *W._batch_manager;
 
         return output;
     }

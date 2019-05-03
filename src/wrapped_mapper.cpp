@@ -11,6 +11,16 @@
 #include "utils.hpp"
 
 void WrappedMapper::initialize_alignment() {
+    if (io.empty()){
+        std::cout << "Nothing to align. Stopping." << std::endl;
+        exit(0);
+    } else {
+        std::cout << "Files found matching input pattern:" << std::endl;
+        for (const auto &f : io.get_input_filenames()) {
+            std::cout << f << std::endl;
+        }
+    }
+
     // check each file is readable
     for (const auto &in_file : _input_files) {
         std::ofstream fin(in_file);
@@ -38,7 +48,7 @@ void WrappedMapper::initialize_alignment() {
 
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
-    grep_files(opts.input_file_pattern, std::experimental::filesystem::current_path());
+    io.set_input_pattern(opts.input_file_pattern);
     _reference = opts.reference;
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
@@ -96,29 +106,12 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _align_calls = 0;
 }
 
-void WrappedMapper::grep_files(const std::string &pattern, const std::string &path) {
-    std::vector<std::string> filenames;
-    for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(path)) {
-        if (regex_match(fs_obj.path().filename().string(), std::regex(pattern)))
-        {
-            auto obj_path_mut = fs_obj.path();
-            _input_files.push_back(obj_path_mut.string());
-            _output_files.push_back(obj_path_mut.replace_extension("_wbt2.sam"));
-            _input_format = obj_path_mut.extension();
-            filenames.push_back(obj_path_mut.filename().string());
-        }
-    }
-
-    std::cout << "Files found matching input pattern:" << std::endl;
-    for (const auto &inp : filenames){
-        std::cout << inp << std::endl;
-    }
-}
-
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     initialize_alignment();
+
+    io.begin_reading();
 
     // open process for output writing
     bool more_data = true;
