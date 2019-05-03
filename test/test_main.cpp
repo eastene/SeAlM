@@ -3,7 +3,8 @@
 //
 
 #define CATCH_CONFIG_MAIN
-#include "catch.hpp"
+
+#include <catch2/catch.hpp>
 
 #include "../src/types.hpp"
-#include "../lib/batch_buckets.hpp"
+#include "../lib/storage.hpp"

@@ -5,13 +5,14 @@
 #include <future>
 #include <chrono>
 
-#include "catch.hpp"
+#include <Catch2/catch.hpp>
+
 #include "../src/types.hpp"
-#include "../lib/batch_buckets.hpp"
+#include "../lib/storage.hpp"
 
 TEST_CASE("single bucket created and consumed correctly" "[batch_buckets]") {
     Read r(4, "");
-    BatchBuckets<Read> bb;
+    BufferedBatchBuckets<Read> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -77,7 +78,7 @@ TEST_CASE("single bucket created and consumed correctly" "[batch_buckets]") {
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[batch_buckets]") {
     Read r(4, "");
-    BatchBuckets<Read> bb;
+    BufferedBatchBuckets<Read> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";

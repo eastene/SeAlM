@@ -2,8 +2,9 @@
 // Created by evan on 5/2/19.
 //
 
-#include "catch.hpp"
-#include "../lib/in_mem_cache.hpp"
+#include <Catch2/catch.hpp>
+
+#include "../lib/cache.hpp"
 
 TEST_CASE("dummy cache initializes correctly" "[DummyCache]") {
     DummyCache<std::string, std::string> cache;

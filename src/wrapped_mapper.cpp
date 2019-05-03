@@ -129,8 +129,8 @@ void WrappedMapper::run_alignment() {
     uint64_t seek_pos = 0;
 
     next_batch(_input_files, _batch_size, &in_buffer, _batch_manager, &more_data, &seek_pos);
-    std::vector<Read> prev_reduced_batch = _batch_manager->get_reduced_batch();
-    std::vector<RedupeRef> prev_batch = _batch_manager->get_batch();
+    std::vector<Read> prev_reduced_batch = _batch_manager->get_unique_batch();
+    std::vector<RedupeRef> prev_batch = _batch_manager->get_reduced_batch();
 
     long align_start = 0, align_end = 0;
 
@@ -163,8 +163,8 @@ void WrappedMapper::run_alignment() {
 
         //_batch_manager->cache_batch(prev_reduced_batch, out);
 
-        prev_reduced_batch = _batch_manager->get_reduced_batch();
-        prev_batch = _batch_manager->get_batch();
+        prev_reduced_batch = _batch_manager->get_unique_batch();
+        prev_batch = _batch_manager->get_reduced_batch();
 
         // print metrics
         _align_calls++;

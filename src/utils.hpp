@@ -9,15 +9,16 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <cpp-subprocess/subprocess.hpp>
 #include "wrapped_mapper.hpp"
-#include "../external/cpp-subprocess-master/subprocess.hpp"
+
 
 
 uint32_t
 next_batch(std::string &infile,
            uint32_t batch_size,
            std::vector<Read> *in_buffer,
-           std::shared_ptr<batch::BatchManager> batch_manager,
+           std::shared_ptr<BatchManager> batch_manager,
            bool *more_data,
            uint64_t *seek_pos) {
 

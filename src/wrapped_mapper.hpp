@@ -14,7 +14,7 @@
 #include <fstream>
 #include <chrono>
 
-#include "../lib/in_mem_cache.hpp"
+#include "../lib/cache.hpp"
 #include "batch_manager.hpp"
 #include "types.hpp"
 

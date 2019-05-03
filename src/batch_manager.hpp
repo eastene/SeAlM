@@ -8,7 +8,7 @@
 #include <variant>
 #include <memory>
 #include "types.hpp"
-#include "../lib/in_mem_cache.hpp"
+#include "../lib/cache.hpp"
 
 
 /*
@@ -21,36 +21,37 @@
  *
  */
 
+// T-dataType, V-cacheValue, C-Cache
+template<typename T, typename V, typename C>
 class BatchManager {
 protected:
-    std::shared_ptr<InMemCache<std::string, std::string> > _cache;
+    std::shared_ptr<C> _cache;
     uint32_t _reduced_len;
     uint32_t _total_len;
     uint32_t _batch_size;
-    std::vector<Read> _reduced_buff;
-    std::vector<RedupeRef> _batch;
+    std::vector<T> _unique_batch;
+    std::vector<RedupeRef> _reduced_batch;
 
 public:
     /*
      * Constructors
      */
 
-    BatchManager() : _reduced_len{0}, _total_len{0},
-                     _batch_size{100000} { _cache = std::make_unique<DummyCache<std::string, std::string> >(); };
+    BatchManager() : _reduced_len{0}, _total_len{0}, _batch_size{50000} {};
 
-    explicit BatchManager(uint32_t batch_size, int cache_type);
+    explicit BatchManager(uint32_t batch_size);
 
     /*
      * Local Cache Operations
      */
 
-    virtual void dedupe_batch(std::vector<Read> &batch);
+    virtual void dedupe_batch(std::vector<T> &batch);
 
     /*
      * Global Cache Operations
      */
 
-    void cache_batch(const std::vector<Read> &reduced_batch, const std::vector<std::string> &alignment);
+    void cache_batch(const std::vector<T> &reduced_batch, const std::vector<V> &alignment);
 
     uint64_t get_hits() { return _cache->hits(); }
 
@@ -58,16 +59,16 @@ public:
      * Getters/Setters
      */
 
-    std::vector<Read> &get_reduced_batch() { return _reduced_buff; }
+    std::vector<T> &get_unique_batch() { return _unique_batch; }
 
-    std::vector<RedupeRef> &get_batch() { return _batch; }
+    std::vector<RedupeRef> &get_reduced_batch() { return _reduced_batch; }
 
     /*
      * Operator Overloads
      */
 
-    friend std::ostream &operator<<(std::ostream &output, const BatchManager &C) {
-        output << *C._cache << std::endl;
+    friend std::ostream &operator<<(std::ostream &output, const BatchManager &B) {
+        output << *B._cache << std::endl;
         return output;
     }
 };

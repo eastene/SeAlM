@@ -9,8 +9,8 @@
 BatchManager::BatchManager(uint32_t batch_size, int cache_type) {
     _reduced_len = 0;
     _total_len = 0;
-    _reduced_buff.reserve(batch_size);
-    _batch.resize(batch_size);
+    _unique_batch.reserve(batch_size);
+    _reduced_batch.resize(batch_size);
     _batch_size = batch_size;
 
     switch (cache_type) {
@@ -35,7 +35,7 @@ BatchManager::BatchManager(uint32_t batch_size, int cache_type) {
 void BatchManager::dedupe_batch(std::vector<Read> &batch) {
     _reduced_len = 0;
     _total_len = 0;
-    _reduced_buff.clear();
+    _unique_batch.clear();
     //_batch.clear();
 
     std::string cached_alignment;
@@ -43,16 +43,16 @@ void BatchManager::dedupe_batch(std::vector<Read> &batch) {
     for (const Read &read : batch) {
         if (_cache->find(read[1]) != _cache->end()) {
             cached_alignment = _cache->at(read[1]);
-            _batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
+            _reduced_batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
         } else {
-            _batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
-            _reduced_buff.emplace_back(read);
+            _reduced_batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
+            _unique_batch.emplace_back(read);
 
         }
         i++;
     }
     if (i < _batch_size)
-        _batch.resize(i);
+        _reduced_batch.resize(i);
     _total_len = batch.size();
 }
 
@@ -65,7 +65,7 @@ void BatchManager::cache_batch(const std::vector<Read> &reduced_batch, const std
 void CompressedBatchManager::dedupe_batch(std::vector<Read> &batch) {
     _reduced_len = 0;
     _total_len = 0;
-    _reduced_buff.clear();
+    _unique_batch.clear();
     _batch.clear();
 
     std::string cached_alignment;
@@ -76,13 +76,13 @@ void CompressedBatchManager::dedupe_batch(std::vector<Read> &batch) {
     for (const Read &read : batch) {
         if (_cache->find(read[1]) != _cache->end()) {
             cached_alignment = _cache->at(read[1]);
-            _batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
+            _reduced_batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
         } else if (_duplicate_finder.find(read[1]) == _duplicate_finder.end()) {
             _duplicate_finder.emplace(read[1], _reduced_len);
-            _batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
-            _reduced_buff.emplace_back(read);
+            _reduced_batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
+            _unique_batch.emplace_back(read);
         } else {
-            _batch[i] = std::make_tuple(_duplicate_finder[read[1]], read[0], read[3]);
+            _reduced_batch[i] = std::make_tuple(_duplicate_finder[read[1]], read[0], read[3]);
         }
         i++;
     }

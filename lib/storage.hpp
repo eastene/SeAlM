@@ -2,8 +2,8 @@
 // Created by evan on 4/30/19.
 //
 
-#ifndef ALIGNER_CACHE_BATCH_BUCKETS_HPP
-#define ALIGNER_CACHE_BATCH_BUCKETS_HPP
+#ifndef ALIGNER_CACHE_STORAGE_HPP
+#define ALIGNER_CACHE_STORAGE_HPP
 
 #include <list>
 #include <mutex>
@@ -15,7 +15,7 @@
 #include <algorithm>
 
 template<typename T>
-class BatchBuckets {
+class BufferedBatchBuckets {
 private:
     // sizing limits
     uint16_t _max_buckets;
@@ -46,7 +46,7 @@ private:
 
 public:
 
-    BatchBuckets() {
+    BufferedBatchBuckets() {
         _max_buckets = 4;
         _max_bucket_size = 50000;
         initialize();
@@ -69,7 +69,7 @@ public:
  */
 
 template<typename T>
-void BatchBuckets<T>::initialize() {
+void BufferedBatchBuckets<T>::initialize() {
     _size = 0;
     _num_buckets = 0;
     _buckets.resize(_max_buckets);
@@ -84,7 +84,7 @@ void BatchBuckets<T>::initialize() {
 }
 
 template<typename T>
-uint16_t BatchBuckets<T>::hash_func(const T &data) {
+uint16_t BufferedBatchBuckets<T>::hash_func(const T &data) {
     switch (data[1][0]) {
         case 'A':
             return 0;
@@ -101,7 +101,7 @@ uint16_t BatchBuckets<T>::hash_func(const T &data) {
 }
 
 template<typename T>
-void BatchBuckets<T>::add_bucket(uint16_t from_buffer) {
+void BufferedBatchBuckets<T>::add_bucket(uint16_t from_buffer) {
     // acquire lock on bucket structure
     std::lock_guard<std::mutex> lock(_bucket_mutex);
     // add buffer data to new bucket and reset buffer
@@ -119,7 +119,7 @@ void BatchBuckets<T>::add_bucket(uint16_t from_buffer) {
 
 
 template<typename T>
-std::unique_ptr<std::vector<T>> BatchBuckets<T>::next_bucket() {
+std::unique_ptr<std::vector<T>> BufferedBatchBuckets<T>::next_bucket() {
     // acquire lock on bucket structure
     std::lock_guard<std::mutex> lock(_bucket_mutex);
     // retrieve next bucket and remove from chain
@@ -145,7 +145,7 @@ std::unique_ptr<std::vector<T>> BatchBuckets<T>::next_bucket() {
 }
 
 template<typename T>
-void BatchBuckets<T>::insert(const T &data) {
+void BufferedBatchBuckets<T>::insert(const T &data) {
     uint64_t i = hash_func(data);
     _buffers[i]->emplace_back(data);
     _size++;
@@ -157,7 +157,7 @@ void BatchBuckets<T>::insert(const T &data) {
 }
 
 template<typename T>
-std::unique_ptr<std::vector<T>> BatchBuckets<T>::wait_for_bucket(std::atomic_bool &cancel) {
+std::unique_ptr<std::vector<T>> BufferedBatchBuckets<T>::wait_for_bucket(std::atomic_bool &cancel) {
     while (_num_buckets <= 0 && !cancel);
     if (!cancel) {
         return next_bucket();
@@ -167,7 +167,7 @@ std::unique_ptr<std::vector<T>> BatchBuckets<T>::wait_for_bucket(std::atomic_boo
 }
 
 template<typename T>
-std::unique_ptr<std::vector<T>> BatchBuckets<T>::next_bucket_async(const std::chrono::milliseconds &timeout) {
+std::unique_ptr<std::vector<T>> BufferedBatchBuckets<T>::next_bucket_async(const std::chrono::milliseconds &timeout) {
     std::atomic_bool cancel = false;
     std::future<std::unique_ptr<std::vector<Read> > > future = std::async(std::launch::async,
                                                                           [&]() { return wait_for_bucket(cancel); });
@@ -187,4 +187,4 @@ std::unique_ptr<std::vector<T>> BatchBuckets<T>::next_bucket_async(const std::ch
 }
 
 
-#endif //ALIGNER_CACHE_BATCH_BUCKETS_HPP
+#endif //ALIGNER_CACHE_STORAGE_HPP

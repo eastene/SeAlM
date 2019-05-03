@@ -2,8 +2,8 @@
 // Created by evan on 4/19/19.
 //
 
-#ifndef ALIGNER_CACHE_IN_MEM_CACHE_HPP
-#define ALIGNER_CACHE_IN_MEM_CACHE_HPP
+#ifndef ALIGNER_CACHE_CACHE_HPP
+#define ALIGNER_CACHE_CACHE_HPP
 
 #include <iostream>
 #include <string>
@@ -212,4 +212,4 @@ void MRUCache<K, V>::evict() {
     this->_cache.erase(key);
 }
 
-#endif //ALIGNER_CACHE_IN_MEM_CACHE_HPP
+#endif //ALIGNER_CACHE_CACHE_HPP

@@ -1,0 +1,11 @@
+# alignment data files
+*.fastq
+*.fasta
+*.sam
+
+# reference genome files
+*.bt2
+
+# object files
+*.o
+
