@@ -114,11 +114,33 @@ void WrappedMapper::run_alignment() {
 
     io.begin_reading();
 
-    // open process for output writing
-    bool more_data = true;
-    std::string temp;
-    temp.reserve(150);
-    std::vector<Read> in_buffer(_batch_size, Read(4, temp));
+    // call aligner to load reference into memory
+    load_reference(_command);
+
+    std::vector<std::string> alignments (_batch_size);
+    try{
+        while(true){
+            io.request_bucket();
+
+            //TODO lookup in cache
+
+            align(_command, , &alignments);
+
+            //TODO demultiplex bucketed alignments
+
+            io.write_async();
+        }
+    } catch (IOResourceExhaustedException &ioree){
+        // align final bucket
+
+    }
+
+
+    // stop reading (in case of exception above) and flush output buffer
+    io.stop_reading();
+    io.flush();
+
+
     std::vector<std::string> out;
     uint64_t seek_pos = 0;
 
@@ -138,13 +160,7 @@ void WrappedMapper::run_alignment() {
 //            batch.append(read)
 //            continue
 
-        // perform alignment on reduced batch
-        std::thread th_b(next_batch, std::ref(_input_file), _batch_size, &in_buffer, _batch_manager, &more_data,
-                         &seek_pos);
-//        std::thread th_a(align, std::ref(_command), std::ref(prev_reduced_batch), &out);
         align(_command, prev_reduced_batch, &out);
-        //      th_a.join();
-        th_b.join();
 
         // TODO: make this equal to what th_b returns
         _reads_seen += _batch_size;

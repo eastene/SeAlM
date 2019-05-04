@@ -146,4 +146,12 @@ void align(std::string &command, std::vector<Read> reduced_batch, std::vector<st
     align_batch(command, reduced_batch, alignments);
 }
 
+void load_reference(std::string &command){
+    // TODO: find a more portable solution for calling aligner process
+    auto proc = subprocess::Popen({command}, subprocess::input{subprocess::PIPE},
+                                  subprocess::output{subprocess::PIPE},
+                                  subprocess::error{subprocess::PIPE});
+    auto obuf = proc.communicate("").first;
+}
+
 #endif //ALIGNER_CACHE_UTILS_HPP

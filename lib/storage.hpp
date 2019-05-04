@@ -163,7 +163,7 @@ template<typename T>
 void BufferedBuckets<T>::flush() {
     std::lock_guard<std::mutex> lock(_bucket_mutex);
     for (uint64_t i = 0; i < _buffers.size(); i++) {
-        if (!_buffers[i].empty()) {
+        if (!_buffers[i]->empty()) {
             _buckets[i].emplace_back(std::move(_buffers[i]));
             _buffers[i] = std::make_unique<std::vector<T>>();
             _num_buckets++;

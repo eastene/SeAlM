@@ -34,8 +34,8 @@ protected:
     uint32_t _reduced_len;
     uint32_t _total_len;
     uint32_t _batch_size;
-    std::vector<T> _unique_batch;
-    std::vector<RedupeRef> _reduced_batch;
+    std::vector<T> _unique_bucket;
+    std::vector<RedupeRef> _reduced_bucket;
     CompressionLevel _compression_level;
 
 public:
@@ -51,7 +51,9 @@ public:
      * Local Cache Operations
      */
 
-    virtual void dedupe_batch(std::vector<T> &batch);
+    void manage_bucket(std::vector<T> bucket);
+
+    void clear();
 
     /*
      * Global Cache Operations
@@ -65,9 +67,9 @@ public:
      * Getters/Setters
      */
 
-    std::vector<T> &get_unique_batch() { return _unique_batch; }
+    std::vector<T> &get_unique_batch() { return _unique_bucket; }
 
-    std::vector<RedupeRef> &get_reduced_batch() { return _reduced_batch; }
+    std::vector<RedupeRef> &get_reduced_batch() { return _reduced_bucket; }
 
     /*
      * Operator Overloads

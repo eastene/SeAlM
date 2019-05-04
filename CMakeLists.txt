@@ -15,13 +15,13 @@ include(FetchContent)
 FetchContent_Declare(
         cpp-subprocess
         GIT_REPOSITORY https://github.com/arun11299/cpp-subprocess.git
-        GIT_TAG 871577770a437b2784d0c75888f8101b0b42de4d
+        GIT_TAG v1.0.4
 )
 
 FetchContent_Declare(
         catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG 9c741fe96073ed620ffc032afbed1f3c789d2b68
+        GIT_TAG v2.7.2
 )
 FetchContent_MakeAvailable(cpp-subprocess Catch2)
 
