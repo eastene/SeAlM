@@ -2,8 +2,8 @@
 // Created by evan on 4/19/19.
 //
 
-#ifndef ALIGNER_CACHE_UTILS_HPP
-#define ALIGNER_CACHE_UTILS_HPP
+#ifndef ALIGNER_CACHE_MAPPING_UTILS_HPP
+#define ALIGNER_CACHE_MAPPING_UTILS_HPP
 
 #include <cstdio>
 #include <vector>
@@ -11,40 +11,6 @@
 #include <sstream>
 #include <cpp-subprocess/subprocess.hpp>
 #include "wrapped_mapper.hpp"
-
-
-
-uint32_t
-next_batch(std::string &infile,
-           uint32_t batch_size,
-           std::vector<Read> *in_buffer,
-           std::shared_ptr<BucketManager> batch_manager,
-           bool *more_data,
-           uint64_t *seek_pos) {
-
-    uint32_t reads_seen = 0;
-    std::ifstream fin(infile);
-    fin.seekg(*seek_pos);
-    // read in next batch
-    for (uint32_t i = 0; i < batch_size; i++) {
-        std::getline(fin, (*in_buffer)[i][0]);
-        std::getline(fin, (*in_buffer)[i][1]);
-        std::getline(fin, (*in_buffer)[i][2]);
-        std::getline(fin, (*in_buffer)[i][3]);
-        if (fin.eof()) {
-            *more_data = false;
-            break;
-        }
-        reads_seen++;
-    }
-
-    // search cache and remove remaining duplicates from batch
-    batch_manager->dedupe_batch(*in_buffer);
-
-    *seek_pos = fin.tellg();
-    fin.close();
-    return reads_seen;
-}
 
 void
 align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::string> *alignments) {
@@ -154,4 +120,4 @@ void load_reference(std::string &command){
     auto obuf = proc.communicate("").first;
 }
 
-#endif //ALIGNER_CACHE_UTILS_HPP
+#endif //ALIGNER_CACHE_MAPPING_UTILS_HPP

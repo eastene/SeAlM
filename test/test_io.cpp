@@ -7,11 +7,10 @@
 
 #include "../lib/io.hpp"
 #include "../src/types.hpp"
-//#include "../src/batch_manager.hpp"
 
 TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
-    //BucketManager<Read, std::string, DummyCache<Read, std::string>>
-    InterleavedIOScheduler<Read, std::string> io;
+    //BucketedPipelineManager<Read, std::string, DummyCache<Read, std::string>>
+    InterleavedIOScheduler<Read> io;
 
     io.set_input_pattern("[a-z]+\\.txt");
     std::ofstream fout("a.txt");
@@ -28,12 +27,14 @@ TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
         }
 
         io.begin_reading();
-        std::future<std::vector<Read> > future = std::async(std::launch::async,
+        std::future<std::vector<std::pair<uint64_t, Read> > > future = std::async(std::launch::async,
                                                             [&]() { return io.request_bucket(); });
         std::future_status status;
         status = future.wait_for(std::chrono::milliseconds(50));
         REQUIRE(future.get().size() == 50000);
-        REQUIRE(future.get()[0][0] == "@test");
+        REQUIRE(future.get()[0].second[0] == "@test");
+        REQUIRE(io.empty());
+        REQUIRE(io.size() == 0);
     }
 
     std::remove("a.txt");

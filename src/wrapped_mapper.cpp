@@ -8,15 +8,15 @@
 #include <experimental/filesystem>
 #include <regex>
 #include "wrapped_mapper.hpp"
-#include "utils.hpp"
+#include "mapping_utils.hpp"
 
 void WrappedMapper::initialize_alignment() {
-    if (io.empty()){
+    if (_pipe.empty()){
         std::cout << "Nothing to align. Stopping." << std::endl;
         exit(0);
     } else {
         std::cout << "Files found matching input pattern:" << std::endl;
-        for (const auto &f : io.get_input_filenames()) {
+        for (const auto &f : _pipe.get_input_filenames()) {
             std::cout << f << std::endl;
         }
     }
@@ -49,36 +49,22 @@ void WrappedMapper::initialize_alignment() {
 
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
-    io.set_input_pattern(opts.input_file_pattern);
+    _pipe.set_input_pattern(opts.input_file_pattern);
     _reference = opts.reference;
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
     //assert (os.path.splitext(self._output_file)[1].lower() == '.sam')
 
     // extract extra parameters
-    _batch_size = opts.batch_size;  // batch size of 100000 seems to work best for bt2 for effectiveness of batch-cache
+    _bucket_size = opts.batch_size;  // batch size of 100000 seems to work best for bt2 for effectiveness of batch-cache
     _qual_thresh = 5225;
     _cache_type = opts.cache_type;
     _manager_type = opts.manager_type;
-    assert(_batch_size > 0);
+    assert(_bucket_size > 0);
 
     // derived parameters
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
-
-    // batch manager with cache
-    switch (_manager_type) {
-        case 0:
-            std::cout << "Selecting default batch manager." << std::endl;
-            _batch_manager = std::make_shared<BucketManager>(_batch_size, _cache_type);
-            break;
-        case 1:
-            std::cout << "Selecting compressed batch manager." << std::endl;
-            _batch_manager = std::make_shared<CompressedBucketManager>(_batch_size, _cache_type);
-            break;
-        default:
-            _batch_manager = std::make_shared<BucketManager>(_batch_size, _cache_type);
-    }
 
     // command
     if (_cache_type > 0) {
@@ -109,109 +95,71 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+    long align_start = 0, align_end = 0;
 
     initialize_alignment();
 
-    io.begin_reading();
+    _pipe.open();
 
     // call aligner to load reference into memory
     load_reference(_command);
 
-    std::vector<std::string> alignments (_batch_size);
+    std::vector<std::string> alignments (_bucket_size);
     try{
         while(true){
-            io.request_bucket();
+            align_start = std::chrono::duration_cast<Mills>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+            _pipe.next_bucket();
 
-            //TODO lookup in cache
+            _reads_seen += _pipe.current_bucket_size();
+            align(_command, _pipe.get_unique_batch(), &alignments);
 
-            align(_command, , &alignments);
+            _pipe.write(alignments);
 
-            //TODO demultiplex bucketed alignments
+            align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-            io.write_async();
+            // update state
+            _align_calls++;
+            _reads_aligned += alignments.size();
+            _reads_seen += _pipe.current_bucket_size();
+            _align_time += (align_end - align_start) / 1000.00;
+
+            _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
+            _hits_vec.emplace_back(_pipe->get_hits());
+            _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+            _reads_aligned_vec.emplace_back(_reads_aligned);
+
+            // print metrics
+            std::cout << "Batch Align Time: " << ((align_end - align_start) / 1000.00) << "s\n";
+            std::cout << "Reads aligned " << _reads_aligned << "\n";
+            std::cout << "Total reads " << _reads_seen << "\n";
+            std::cout << _pipe;
+            std::cout << "Throughput: " << (_bucket_size / ((align_end - align_start) / 1000.00)) << " r/s\n";
+            std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
+            std::cout << "----------------------------" << std::endl;
         }
     } catch (IOResourceExhaustedException &ioree){
         // align final bucket
+        align_start = std::chrono::duration_cast<Mills>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        align(_command, _pipe.get_unique_batch(), &alignments);
+        _pipe.write(alignments);
+        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
+        // update state
+        _align_calls++;
+        _reads_aligned += alignments.size();
+        _reads_seen += _pipe.current_bucket_size();
+        _align_time += (align_end - align_start) / 1000.00;
+
+        _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
+        _hits_vec.emplace_back(_pipe->get_hits());
+        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+        _reads_aligned_vec.emplace_back(_reads_aligned);
     }
-
 
     // stop reading (in case of exception above) and flush output buffer
-    io.stop_reading();
-    io.flush();
-
-
-    std::vector<std::string> out;
-    uint64_t seek_pos = 0;
-
-    next_batch(_input_files, _batch_size, &in_buffer, _batch_manager, &more_data, &seek_pos);
-    std::vector<Read> prev_reduced_batch = _batch_manager->get_unique_batch();
-    std::vector<RedupeRef> prev_batch = _batch_manager->get_reduced_batch();
-
-    long align_start = 0, align_end = 0;
-
-    while (more_data) {
-        align_start = std::chrono::duration_cast<Mills>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-
-//            qual_sum = sum(array.array('B', list(read[1])))
-//            if qual_sum < self.qual_thresh:
-//            if quality is too low, force aligner to try to handle it
-//            batch.append(read)
-//            continue
-
-        align(_command, prev_reduced_batch, &out);
-
-        // TODO: make this equal to what th_b returns
-        _reads_seen += _batch_size;
-        //write_batch(_output_file, prev_batch, out);
-        std::thread th_w(write_batch, std::ref(_output_file), prev_batch, out);
-        th_w.detach();
-
-        // TODO: implement lock for cache so this can be detached instead of joining
-        std::thread th_c([=] { _batch_manager->cache_batch(prev_reduced_batch, out); });
-
-        //_batch_manager->cache_batch(prev_reduced_batch, out);
-
-        prev_reduced_batch = _batch_manager->get_unique_batch();
-        prev_batch = _batch_manager->get_reduced_batch();
-
-        // print metrics
-        _align_calls++;
-        _reads_aligned += out.size();
-        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-        _align_time += (align_end - align_start) / 1000.00;
-        std::cout << "Batch Align Time: " << ((align_end - align_start) / 1000.00) << "s\n";
-        std::cout << "Reads aligned " << _reads_aligned << "\n";
-        std::cout << "Total reads " << _reads_seen << "\n";
-        std::cout << *_batch_manager;
-        std::cout << "Throughput: " << (_batch_size / ((align_end - align_start) / 1000.00)) << " r/s\n";
-        std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
-        std::cout << "----------------------------" << std::endl;
-        _throughput_vec.emplace_back(_batch_size / ((align_end - align_start) / 1000.00));
-        _hits_vec.emplace_back(_batch_manager->get_hits());
-        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
-        _reads_aligned_vec.emplace_back(_reads_aligned);
-
-        th_c.join();
-    }
-
-    if (!prev_batch.empty()) {
-        align_start = std::chrono::duration_cast<Mills>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-        align(_command, prev_reduced_batch, &out);
-        write_batch(_output_file, prev_batch, out);
-        _align_calls++;
-        _reads_aligned += out.size();
-        _reads_seen += prev_batch.size();
-        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-        _align_time += (align_end - align_start) / 1000.00;
-
-        _throughput_vec.emplace_back(prev_batch.size() / ((align_end - align_start) / 1000.00));
-        _hits_vec.emplace_back(_batch_manager->get_hits());
-        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
-        _reads_aligned_vec.emplace_back(_reads_aligned);
-    }
+    _pipe.close();
 
     long end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     _total_time = (end - start) / 1000.00;
@@ -220,7 +168,7 @@ void WrappedMapper::run_alignment() {
 
 std::string WrappedMapper::prepare_log() {
     std::stringstream ss;
-    ss << "# batch_size:" <<_batch_size << " manager_type:" << _manager_type << " cache_type:"
+    ss << "# batch_size:" <<_bucket_size << " manager_type:" << _manager_type << " cache_type:"
         << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
     ss << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
     for (uint64_t i = 0; i < _align_calls; i++) {

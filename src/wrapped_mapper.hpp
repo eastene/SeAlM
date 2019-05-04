@@ -15,7 +15,7 @@
 #include <chrono>
 
 #include "../lib/cache.hpp"
-#include "batch_manager.hpp"
+#include "../lib/pipeline.hpp"
 #include "types.hpp"
 #include "../lib/io.hpp"
 
@@ -31,7 +31,7 @@ private:
     //assert (os.path.splitext(self._output_file)[1].lower() == '.sam')
 
     // extract extra parameters
-    uint32_t _batch_size;
+    uint32_t _bucket_size;
     uint32_t _qual_thresh;
     int _cache_type;
     int _manager_type;
@@ -41,11 +41,8 @@ private:
     uint8_t _read_size;
     std::string _command;
 
-    // IO Scheduler
-    InterleavedIOScheduler<Read, BucketManager<Read, std::string, InMemCache<std::string, std::string> > > io;
-
-    // batch manager with cache
-//    std::shared_ptr<BucketManager> _batch_manager;
+    // Pipeline manager
+    BucketedPipelineManager<Read, std::string, RedupeRef, InMemCache<std::string, std::string> > _pipe;
 
     // metrics
     double _total_time;
