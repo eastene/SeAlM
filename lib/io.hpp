@@ -62,17 +62,20 @@ private:
     std::string _input_ext;
     std::string _auto_output_ext; // used if modifying extension of input to generate output
 
-    // Private methods
-    T parse_fn(); // reads a single data point from a single file
+    // Functors
+    std::function<T(std::ifstream&)> _parsing_fn;
 
-    std::vector<T> parse_multi(uint32_t n);
+    // Private methods
+    T parse_single(); // reads a single data point from a single file
+
+    std::vector<T> parse_multi(uint64_t n);
 
     void read_until_done(std::atomic_bool &cancel);
 
 public:
     InterleavedIOScheduler();
 
-    InterleavedIOScheduler(const std::string &input_pattern);
+    InterleavedIOScheduler(const std::string &input_pattern, std::function<T(std::ifstream)> &parse_func);
 
     /*
      *  Convenience functions
@@ -87,7 +90,7 @@ public:
 
     bool stop_reading();
 
-    std::vector<T> request_batch();
+    std::vector<T> request_bucket();
 
     /*
      * Output functions
@@ -113,6 +116,13 @@ public:
 
 };
 
+template <typename T>
+T default_parser(std::ifstream &fin){
+    std::string line;
+    std::getline(fin, line);
+    return line;
+}
+
 template<typename T, typename M>
 InterleavedIOScheduler<T, M>::InterleavedIOScheduler() {
     _max_io_interleave = 10;
@@ -120,15 +130,17 @@ InterleavedIOScheduler<T, M>::InterleavedIOScheduler() {
     _halt_flag = false;
     _input_pattern = "";
     _auto_output_ext = "";
+    _parsing_fn = std::function<T(std::ifstream)>([](std::ifstream fin){return default_parser<T>(fin);});
 }
 
 template<typename T, typename M>
-InterleavedIOScheduler<T, M>::InterleavedIOScheduler(const std::string &input_pattern) {
+InterleavedIOScheduler<T, M>::InterleavedIOScheduler(const std::string &input_pattern, std::function<T(std::ifstream)> &parse_func) {
     _max_io_interleave = 10;
     _read_head = 0;
     _halt_flag = false;
     _input_pattern = input_pattern;
-    _auto_output_ext = "";
+    _parsing_fn = parse_func;
+    _auto_output_ext = "_out";
 }
 
 template<typename T, typename M>
@@ -152,32 +164,60 @@ void InterleavedIOScheduler<T, M>::from_dir(const std::experimental::filesystem:
 }
 
 template<typename T, typename M>
-T InterleavedIOScheduler<T, M>::parse_fn() {
-    T data;
+T InterleavedIOScheduler<T, M>::parse_single() {
     std::ifstream fin(_inputs[_read_head]);
     fin.seekg(_seek_poses[_read_head]);
 
-    std::string line;
-    std::getline(fin, line);
-    // TODO define parse function as lambda
+    T data = _parsing_fn(fin);
+
     if (fin.eof()) {
         throw IOStreamExhaustedException();
     }
 
     _seek_poses[_read_head] = fin.tellg();
     fin.close();
+
+    return data;
 }
 
 template<typename T, typename M>
+std::vector<T> InterleavedIOScheduler<T, M>::parse_multi(uint64_t n) {
+    std::vector<T> data;
+    std::ifstream fin(_inputs[_read_head]);
+    fin.seekg(_seek_poses[_read_head]);
+
+    for (uint64_t i = 0; i < n; i++) {
+        data.push_back(_parsing_fn(fin));
+
+        if (fin.eof()) {
+            throw IOStreamExhaustedException();
+        }
+    }
+
+    _seek_poses[_read_head] = fin.tellg();
+    fin.close();
+
+    return data;
+}
+template<typename T, typename M>
 void InterleavedIOScheduler<T, M>::read_until_done(std::atomic_bool &cancel) {
     while (!cancel) {
+        // parse data point(s) in round robin fashion until all files exhausted
         try {
             // TODO add timeout to reading
-            _in_buff.insert(parse_fn(), cancel);
+            _in_buff.insert(parse_single(), cancel);
         } catch (IOStreamExhaustedException &iosee) {
+            // remove files after fully read
             _inputs.erase(_inputs.begin() + _read_head);
         }
-        _read_head = (_read_head + 1) % _max_io_interleave;
+        // move virtual read head to next file
+        _read_head = (_read_head + 1) % std::min(_max_io_interleave, _inputs.size());
+
+        // once all files have been read, flush any data remaining in buffers to buckets
+        if (_inputs.empty()){
+            _in_buff.flush();
+            cancel=true;
+        }
     }
 }
 
@@ -192,7 +232,7 @@ bool InterleavedIOScheduler<T, M>::stop_reading() {
 }
 
 template<typename T, typename M>
-std::vector<T> InterleavedIOScheduler<T, M>::request_batch() {
+std::vector<T> InterleavedIOScheduler<T, M>::request_bucket() {
     std::unique_ptr<std::vector<T>> bucket = _in_buff.next_bucket_async(std::chrono::milliseconds(500));
     if (bucket == nullptr) {
         throw TimeoutException();

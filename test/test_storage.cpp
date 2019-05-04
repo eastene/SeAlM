@@ -75,6 +75,13 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
         }
         REQUIRE(matches == bucket->size());
     }
+
+    SECTION("flushing buffer creates bucket from non-empty buffer") {
+        bb.flush();
+        REQUIRE(bb.num_buckets() == 1);
+        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(500));
+        REQUIRE(bucket->size() == 49999);
+    }
 }
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]") {

@@ -17,42 +17,42 @@
 template<typename T>
 class BufferedBuckets {
 private:
-    // sizing limits
+    // Sizing limits
     uint16_t _max_buckets;
     uint32_t _max_bucket_size;
 
-    // state descriptors
+    // State descriptors
     uint64_t _num_buckets;
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
     uint16_t _current_chain;
     typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
 
-    // locks for thread safety
+    // Locks for thread safety
     std::mutex _bucket_mutex;
 
-    // data structures
+    // Data structures
     std::vector<std::list<std::unique_ptr<std::vector<T> > > > _buckets; // full buckets
     std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
 
-    // private methods
-    void initialize();
+    // Functors
 
-    uint16_t hash_func(const T &data);
+    std::function<uint64_t(T)> _hash_fn;
+
+    // Private methods
+    void initialize();
 
     void add_bucket(uint16_t from_buffer, std::atomic_bool &cancel);
 
 public:
 
-    BufferedBuckets() {
-        _max_buckets = 4;
-        _max_bucket_size = 50000;
-        initialize();
-    }
+    BufferedBuckets();
 
     void insert(const T &data, std::atomic_bool &cancel);
 
     void insert_async(const T &data, const std::chrono::milliseconds &timeout);
+
+    void flush();
 
     std::unique_ptr<std::vector<T>> next_bucket(std::atomic_bool &cancel);
 
@@ -65,10 +65,36 @@ public:
     bool full() { return _num_buckets >= _max_buckets; }
 };
 
+/*
+ * Functors
+ */
+
+template<typename T>
+uint64_t default_hash(T &data) {
+    switch (data[1][0]) {
+        case 'A':
+            return 0;
+        case 'C':
+            return 1;
+        case 'T':
+            return 2;
+        case 'G':
+            return 3;
+        default:
+            return 3;
+    }
+}
 
 /*
  *  Method Implementations
  */
+template<typename T>
+BufferedBuckets<T>::BufferedBuckets() {
+    _max_buckets = 4;
+    _max_bucket_size = 50000;
+    _hash_fn = std::function<uint64_t(T)>([](T data) { return default_hash(data); });
+    initialize();
+}
 
 template<typename T>
 void BufferedBuckets<T>::initialize() {
@@ -86,25 +112,9 @@ void BufferedBuckets<T>::initialize() {
 }
 
 template<typename T>
-uint16_t BufferedBuckets<T>::hash_func(const T &data) {
-    switch (data[1][0]) {
-        case 'A':
-            return 0;
-        case 'C':
-            return 1;
-        case 'T':
-            return 2;
-        case 'G':
-            return 3;
-        default:
-            return 3;
-    }
-}
-
-template<typename T>
 void BufferedBuckets<T>::add_bucket(uint16_t from_buffer, std::atomic_bool &cancel) {
     while (full() && !cancel);
-    if (!cancel){
+    if (!cancel) {
         // acquire lock on bucket structure
         std::lock_guard<std::mutex> lock(_bucket_mutex);
         // add buffer data to new bucket and reset buffer
@@ -126,7 +136,7 @@ void BufferedBuckets<T>::add_bucket(uint16_t from_buffer, std::atomic_bool &canc
 template<typename T>
 void BufferedBuckets<T>::insert(const T &data, std::atomic_bool &cancel) {
     // find buffer for data and add
-    uint64_t i = hash_func(data);
+    uint64_t i = _hash_fn(data);
     _buffers[i]->emplace_back(data);
     _size++;
     // bucketize buffer if full and buffer space available
@@ -139,13 +149,26 @@ template<typename T>
 void BufferedBuckets<T>::insert_async(const T &data, const std::chrono::milliseconds &timeout) {
     std::atomic_bool cancel = false;
     std::future<std::unique_ptr<std::vector<T> > > future = std::async(std::launch::async,
-                                                                          [&]() { return insert(data, cancel); });
+                                                                       [&]() { return insert(data, cancel); });
     std::future_status status;
     status = future.wait_for(timeout);
     cancel = true;
 
     if (status != std::future_status::ready) {
         //TODO: throw exception (?)
+    }
+}
+
+template<typename T>
+void BufferedBuckets<T>::flush() {
+    std::lock_guard<std::mutex> lock(_bucket_mutex);
+    for (uint64_t i = 0; i < _buffers.size(); i++) {
+        if (!_buffers[i].empty()) {
+            _buckets[i].emplace_back(std::move(_buffers[i]));
+            _buffers[i] = std::make_unique<std::vector<T>>();
+            _num_buckets++;
+            _chain_lengths[i]++;
+        }
     }
 }
 
@@ -184,7 +207,7 @@ template<typename T>
 std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket_async(const std::chrono::milliseconds &timeout) {
     std::atomic_bool cancel = false;
     std::future<std::unique_ptr<std::vector<T> > > future = std::async(std::launch::async,
-                                                                          [&]() { return next_bucket(cancel); });
+                                                                       [&]() { return next_bucket(cancel); });
     std::future_status status;
     status = future.wait_for(timeout);
     cancel = true;

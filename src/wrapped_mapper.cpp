@@ -21,6 +21,7 @@ void WrappedMapper::initialize_alignment() {
         }
     }
 
+    // TODO move this functionality to io system
     // check each file is readable
     for (const auto &in_file : _input_files) {
         std::ofstream fin(in_file);

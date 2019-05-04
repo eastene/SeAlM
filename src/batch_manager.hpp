@@ -10,6 +10,12 @@
 #include "types.hpp"
 #include "../lib/cache.hpp"
 
+enum CompressionLevel{
+    NONE,
+    CROSS,
+    FULL
+};
+
 
 /*
  *
@@ -30,13 +36,14 @@ protected:
     uint32_t _batch_size;
     std::vector<T> _unique_batch;
     std::vector<RedupeRef> _reduced_batch;
+    CompressionLevel _compression_level;
 
 public:
     /*
      * Constructors
      */
 
-    BucketManager() : _reduced_len{0}, _total_len{0}, _batch_size{50000} {};
+    BucketManager() : _reduced_len{0}, _total_len{0}, _batch_size{50000}, _compression_level{NONE} {};
 
     explicit BucketManager(uint32_t batch_size);
 

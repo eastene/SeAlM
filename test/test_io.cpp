@@ -11,7 +11,7 @@
 
 TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
     //BucketManager<Read, std::string, DummyCache<Read, std::string>>
-    InterleavedIOScheduler<Read, std::string > io;
+    InterleavedIOScheduler<Read, std::string> io;
 
     io.set_input_pattern("[a-z]+\\.txt");
     std::ofstream fout("a.txt");
@@ -20,7 +20,20 @@ TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
     REQUIRE(io.size() == 1);
 
     SECTION("a bucket will be created after reading sufficient data") {
-        // TODO: finish this test case
+        for (int i = 0; i < 50000; i++) {
+            fout << "@test";
+            fout << "AAGGC";
+            fout << "+";
+            fout << "=====";
+        }
+
+        io.begin_reading();
+        std::future<std::vector<Read> > future = std::async(std::launch::async,
+                                                            [&]() { return io.request_bucket(); });
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
+        REQUIRE(future.get().size() == 50000);
+        REQUIRE(future.get()[0][0] == "@test");
     }
 
     std::remove("a.txt");
