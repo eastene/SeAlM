@@ -19,13 +19,13 @@ class BufferedBuckets {
 private:
     // Sizing limits
     uint16_t _max_buckets;
-    uint32_t _max_bucket_size;
+    uint64_t _max_bucket_size;
 
-    // State descriptors
+    // State variables
     uint64_t _num_buckets;
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
-    uint16_t _current_chain;
+    uint64_t _current_chain;
     typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
 
     // Locks for thread safety
@@ -42,7 +42,7 @@ private:
     // Private methods
     void initialize();
 
-    void add_bucket(uint16_t from_buffer, std::atomic_bool &cancel);
+    void add_bucket(uint64_t from_buffer, std::atomic_bool &cancel);
 
 public:
 
@@ -112,7 +112,7 @@ void BufferedBuckets<T>::initialize() {
 }
 
 template<typename T>
-void BufferedBuckets<T>::add_bucket(uint16_t from_buffer, std::atomic_bool &cancel) {
+void BufferedBuckets<T>::add_bucket(uint64_t from_buffer, std::atomic_bool &cancel) {
     while (full() && !cancel);
     if (!cancel) {
         // acquire lock on bucket structure

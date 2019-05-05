@@ -11,7 +11,7 @@
 #include "mapping_utils.hpp"
 
 void WrappedMapper::initialize_alignment() {
-    if (_pipe.empty()){
+    if (_pipe.empty()) {
         std::cout << "Nothing to align. Stopping." << std::endl;
         exit(0);
     } else {
@@ -25,7 +25,7 @@ void WrappedMapper::initialize_alignment() {
     // check each file is readable
     for (const auto &in_file : _input_files) {
         std::ofstream fin(in_file);
-        if (!fin){
+        if (!fin) {
             fin.close();
             std::cout << in_file << " not readable. Aborting." << std::endl;
             exit(1);
@@ -67,23 +67,14 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _read_size = _input_type == 'q' ? 4 : 3;
 
     // command
-    if (_cache_type > 0) {
-        std::stringstream command_s;
-        command_s << "bowtie2 --mm --no-hd -p 3 -";
-        command_s << _input_type;
-        command_s << " -x ";
-        command_s << _reference;
-        command_s << " -U -";
-        _command = command_s.str();
-    } else {
-        std::stringstream command_s;
-        command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
-        command_s << _input_type;
-        command_s << " -x ";
-        command_s << _reference;
-        command_s << " -U -";
-        _command = command_s.str();
-    }
+    std::stringstream command_s;
+    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
+    command_s << _input_type;
+    command_s << " -x ";
+    command_s << _reference;
+    command_s << " -U -";
+    _command = command_s.str();
+
 
     // metrics
     _total_time = 0;
@@ -104,9 +95,9 @@ void WrappedMapper::run_alignment() {
     // call aligner to load reference into memory
     load_reference(_command);
 
-    std::vector<std::string> alignments (_bucket_size);
-    try{
-        while(true){
+    std::vector<std::string> alignments(_bucket_size);
+    try {
+        while (true) {
             align_start = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
             _pipe.next_bucket();
@@ -125,7 +116,7 @@ void WrappedMapper::run_alignment() {
             _align_time += (align_end - align_start) / 1000.00;
 
             _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
-            _hits_vec.emplace_back(_pipe->get_hits());
+            _hits_vec.emplace_back(_pipe.cache_hits());
             _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
             _reads_aligned_vec.emplace_back(_reads_aligned);
 
@@ -138,7 +129,7 @@ void WrappedMapper::run_alignment() {
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
         }
-    } catch (IOResourceExhaustedException &ioree){
+    } catch (IOResourceExhaustedException &ioree) {
         // align final bucket
         align_start = std::chrono::duration_cast<Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
@@ -168,8 +159,8 @@ void WrappedMapper::run_alignment() {
 
 std::string WrappedMapper::prepare_log() {
     std::stringstream ss;
-    ss << "# batch_size:" <<_bucket_size << " manager_type:" << _manager_type << " cache_type:"
-        << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
+    ss << "# batch_size:" << _bucket_size << " manager_type:" << _manager_type << " cache_type:"
+       << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
     ss << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
     for (uint64_t i = 0; i < _align_calls; i++) {
         ss << i << "," << _batch_time_vec[i] << "," << _throughput_vec[i] << "," << _hits_vec[i] << ","

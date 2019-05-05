@@ -12,9 +12,9 @@
 #include "io.hpp"
 
 enum CompressionLevel {
-    NONE,
-    CROSS,
-    FULL
+    NONE,  // no compression of batch, unless in cache
+    CROSS, // compression only for duplicates across file ids (not within)
+    FULL  // compression of all duplicates in batch
 };
 
 
@@ -26,34 +26,40 @@ enum CompressionLevel {
  *
  */
 
-// T-dataType, R-Reducedtype V-cacheValue, C-Cache
-template<typename T, typename R, typename V, typename C>
+// T-dataType, K-cacheKey, V-cacheValue
+template<typename T, typename K, typename V>
 class BucketedPipelineManager {
 protected:
     // IO variables
-    InterleavedIOScheduler<T> io;
+    InterleavedIOScheduler<T> _io_subsystem;
 
     // Global cache variables
-    C _cache;
+    // TODO implement cross-only compression for caching
+    InMemCache<K, V> _cache_subsystem;
 
-    // Current bucket variables
-    CompressionLevel _compression_level;
-    std::unordered_map<std::string, uint32_t> _duplicate_finder;
-    uint64_t _reduced_len;
-    uint64_t _total_len;
+    // Effort limits
     uint64_t _max_bucket_size;
-    std::vector<T> _unique_bucket;
-    std::vector<std::pair<uint64_t, R> > _reduced_bucket;
+
+    // Current bucket data structures
+    std::vector<T> _current_bucket;
+    std::vector<T> _unique_entries;
+    std::vector<std::pair<uint64_t, uint64_t> > _multiplexer; // file id, value lookup
+
+    // Compression variables
+    CompressionLevel _compression_level;
+    std::unordered_map<K, std::pair<uint64_t, uint64_t> > _duplicate_finder;
 
     // State variables
-    bool _ready_for_next; // previous bucket is ready to write
+    bool pipe_clear_flag; // previous bucket is ready to write
+
+    // Locks for thread safety
+    std::mutex _pipe_mutex;
 
     // Functors
 
-    std::function<V(T)> postprocess_fn;
+    std::function<K(T)> extract_key; // extract key from data or transform data into key
 
-    // Private methods
-    std::unique_ptr<std::vector<T>> reduce_bucket(std::unique_ptr<std::vector<T>> bucket);
+    std::function<std::string(T, V)> postprocess_fn; // transform data and/or value to string for writing to file
 
 public:
     /*
@@ -68,7 +74,7 @@ public:
 
     void open();
 
-    std::unique_ptr<std::vector<T>> read();
+    std::shared_ptr<std::vector<T>> read();
 
     void write(const std::vector<V> &alignment);
 
@@ -78,138 +84,141 @@ public:
      * State descriptors
      */
 
-    bool empty() { return io.empty(); }
+    bool empty() { return _io_subsystem.empty(); }
 
-    uint64_t current_bucket_size() { return _reduced_bucket.size(); }
+    uint64_t current_bucket_size() { return _current_bucket.size(); }
 
-    uint64_t cache_hits() { return _cache->hits(); }
+    uint64_t compressed_size() { return _unique_entries.size(); }
+
+    uint64_t cache_hits() { return _cache_subsystem.hits(); }
 
     /*
      * Operator Overloads
      */
 
     friend std::ostream &operator<<(std::ostream &output, const BucketedPipelineManager &B) {
-        output << *B._cache << std::endl;
+        output << *B._cache_subsystem << std::endl;
         return output;
     }
 };
 
-template<typename T, typename R, typename V, typename C>
-BucketedPipelineManager<T, R, V, C>::BucketedPipelineManager() {
-    _reduced_len = 0;
-    _total_len = 0;
+template<typename T, typename K, typename V>
+BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
     _max_bucket_size = 50000;
     _compression_level = NONE;
-    _ready_for_next = false;
+    pipe_clear_flag = false;
     //TODO: initialize io and cache
 }
 
-template<typename T, typename R, typename V, typename C>
-std::unique_ptr<std::vector<T>>
-BucketedPipelineManager<T, R, V, C>::reduce_bucket(std::unique_ptr<std::vector<T>> bucket) {
-    for (const Read &read : bucket) {
-//        if (_cache->find(read[1]) != _cache->end()) {
-//            cached_alignment = _cache->at(read[1]);
-//            _reduced_batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
-//        } else {
-//            _reduced_batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
-//            _unique_batch.emplace_back(read);
-//
-//        }
-//        i++;
+template<typename T, typename K, typename V>
+void BucketedPipelineManager<T, K, V>::open() {
+    _io_subsystem.begin_reading();
+    pipe_clear_flag = true;
+}
+
+template<typename T, typename K, typename V>
+std::shared_ptr<std::vector<T>> BucketedPipelineManager<T, K, V>::read() {
+    std::lock_guard<std::mutex> lock(_pipe_mutex);
+    if (pipe_clear_flag) {
+        // read next bucket after previous is written
+        pipe_clear_flag = false;
+        std::unique_ptr<std::vector<std::pair<uint64_t, T> > > next_bucket = _io_subsystem.request_bucket();
+
+        // prepare to compress
+        _current_bucket.resize(next_bucket->size());
+        _multiplexer.reserve(next_bucket->size());
+        // extract data (separate from file id) and compress
+        uint64_t i = 0;
+        for (const auto &mtpx_item : next_bucket.get()) {
+            // extract data
+            _current_bucket[i] = mtpx_item->second;
+
+            if (_duplicate_finder.find(extract_key(_current_bucket[i])) != _duplicate_finder.end()) {
+                // duplicate found, handle according to compression level
+                switch (_compression_level) {
+                    case NONE:
+                        // no multiplexing, possibly cached
+                        break;
+                    case CROSS:
+                        // only compress if the previous duplicate is not from the same file according to file id
+                        if (_duplicate_finder.at(extract_key(_current_bucket[i])).first != mtpx_item.first) {
+                            _multiplexer[i] = std::make_pair(mtpx_item->first,
+                                                             _duplicate_finder.at(
+                                                                     extract_key(_current_bucket[i]).second))
+                        } else {
+                            // otherwise count as a unique entry
+                            _unique_entries.emplace_back(mtpx_item->second);
+                            _multiplexer[i] = std::make_pair(mtpx_item->first, i);
+                        }
+                        break;
+                    case FULL:
+                        // compress if any duplication detected
+                        _multiplexer[i] = std::make_pair(mtpx_item->first,
+                                                         _duplicate_finder.at(extract_key(_current_bucket[i]).second));
+                        break;
+                    default:
+                        break;
+                }
+            } else if (_cache_subsystem->find(extract_key(_current_bucket[i])) != _cache_subsystem->end()) {
+                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+                _multiplexer[i] = std::make_pair(mtpx_item->first, UINT64_MAX);
+            } else {
+                // unique, non-cached value return as part of compressed bucket
+                _unique_entries.emplace_back(mtpx_item->second);
+                _multiplexer[i] = std::make_pair(mtpx_item->first, i);
+
+                // store for later lookup to detect further duplicates
+                if (_compression_level > NONE) {
+                    _duplicate_finder.emplace(extract_key(_current_bucket[i]),
+                                              std::make_pair(mtpx_item.first, _unique_entries.size() - 1);
+                }
+            }
+            i++;
+        }
+        _duplicate_finder.clear();
+
+        // return only the unique entries given the compression level
+        return _unique_entries;
+    } else {
+        // TODO: throw more explicit exception
+        return nullptr;
     }
 }
 
-template<typename T, typename R, typename V, typename C>
-void BucketedPipelineManager<T, R, V, C>::open() {
-    io.begin_reading();
-    _ready_for_next = true;
-}
+template<typename T, typename K, typename V>
+void BucketedPipelineManager<T, K, V>::write(const std::vector<V> &out) {
+    std::lock_guard<std::mutex> lock(_pipe_mutex);
+    if (!pipe_clear_flag) {
+        // should have exactly as many unique enties as values
+        assert(_unique_entries.size() == out.size());
 
-template<typename T, typename R, typename V, typename C>
-std::unique_ptr<std::vector<T>> BucketedPipelineManager<T, R, V, C>::read() {
-    std::unique_ptr<std::vector<std::pair<uint64_t, T> > > next_bucket = io.request_bucket();
+        // de-multiplex using multiplexer built when reading
+        for (uint64_t i = 0; i < _current_bucket.size(); i++) {
+            if (_multiplexer[i].second == UINT64_MAX) {
+                // found in cache earlier, report cached value
+                _io_subsystem.write_async(_multiplexer[i].first, postprocess_fn(_current_bucket[i], _cache_subsystem.at(
+                        extract_key(_current_bucket[i]))));
+            } else {
+                // otherwise, write value indicated by multiplexer
+                _cache_subsystem->insert(extract_key(_current_bucket[i]), out[i]);
+                _io_subsystem.write_async(_multiplexer[i].first,
+                                          postprocess_fn(_current_bucket[i], out[_multiplexer[i].second]));
+            }
+        }
 
-    reduce_bucket(next_bucket);
-
-    switch (_compression_level) {
-        case NONE:
-            return;
-        case CROSS:
-            return;
-        case FULL:
-            return;
-        default:
-            return;
-    }
-//    _reduced_len = 0;
-//    _total_len = 0;
-//    _unique_batch.clear();
-//    //_batch.clear();
-//
-//    std::string cached_alignment;
-//    uint32_t i = 0;
-//    for (const Read &read : batch) {
-//        if (_cache->find(read[1]) != _cache->end()) {
-//            cached_alignment = _cache->at(read[1]);
-//            _reduced_batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
-//        } else {
-//            _reduced_batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
-//            _unique_batch.emplace_back(read);
-//
-//        }
-//        i++;
-//    }
-//    if (i < _batch_size)
-//        _reduced_batch.resize(i);
-//    _total_len = batch.size();
-}
-
-template<typename T, typename R, typename V, typename C>
-void BucketedPipelineManager<T, R, V, C>::write(const std::vector<V> &out) {
-    assert(_unique_bucket.size() == out.size());
-    for (uint32_t i = 0; i < _unique_bucket.size(); i++)
-        // TODO: keep read sequences for caching as key indexes with lambda for extraction
-        _cache->insert(_unique_bucket[i], out[i]);
-
-    //TODO: add lambda for post processing before writing
-    for (const auto &item : _reduced_bucket) {
-        io.write_async(item.first, postprocess_fn(item.second));
+        // clear internal data structures and make ready for next reading
+        _current_bucket.clear();
+        _multiplexer.clear();
+        _unique_entries.clear();
+        pipe_clear_flag = true;
     }
 }
 
-template<typename T, typename R, typename V, typename C>
-void BucketedPipelineManager<T, R, V, C>::close() {
-    io.stop_reading();
-    io.flush();
+template<typename T, typename K, typename V>
+void BucketedPipelineManager<T, K, V>::close() {
+    pipe_clear_flag = false;
+    _io_subsystem.stop_reading();
+    _io_subsystem.flush();
 }
-
-// TODO: delete after integrating into pipeline manager (full compression)
-//void CompressedBucketManager::dedupe_batch(std::vector<Read> &batch) {
-//    _reduced_len = 0;
-//    _total_len = 0;
-//    _unique_batch.clear();
-//    _batch.clear();
-//
-//    std::string cached_alignment;
-//    uint32_t i = 0;
-//    std::sort(batch.begin(), batch.end(), [](const Read &a, const Read &b) {
-//        return a[1] < b[1];
-//    });
-//    for (const Read &read : batch) {
-//        if (_cache->find(read[1]) != _cache->end()) {
-//            cached_alignment = _cache->at(read[1]);
-//            _reduced_batch[i] = std::make_tuple(cached_alignment, read[0], read[3]);
-//        } else if (_duplicate_finder.find(read[1]) == _duplicate_finder.end()) {
-//            _duplicate_finder.emplace(read[1], _reduced_len);
-//            _reduced_batch[i] = std::make_tuple(_reduced_len++, read[0], read[3]);
-//            _unique_batch.emplace_back(read);
-//        } else {
-//            _reduced_batch[i] = std::make_tuple(_duplicate_finder[read[1]], read[0], read[3]);
-//        }
-//        i++;
-//    }
-//    _total_len = batch.size();
-//}
 
 #endif //ALIGNER_CACHE_PIPELINE_HPP

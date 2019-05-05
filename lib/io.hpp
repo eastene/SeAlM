@@ -48,11 +48,11 @@ private:
     uint64_t _read_head;
 
     // IO buffers
-    BufferedBuckets<std::pair<uint64_t, T> > _in_buff;
-    std::vector<std::pair<uint64_t, std::string>> _out_buff;
+    BufferedBuckets<std::pair<uint64_t, T> > _storage_subsystem; // input storage
+    std::vector<std::pair<uint64_t, std::string>> _out_buff; // simple outout buffer storage
 
     // Effort limits
-    uint16_t _max_io_interleave;
+    uint64_t _max_io_interleave;
     uint64_t _out_buff_threshold;
 
     // Flags
@@ -118,7 +118,7 @@ public:
      * State descriptors
      */
 
-    bool empty() { return (_in_buff.size() == 0) && (_inputs.empty()); }
+    bool empty() { return (_storage_subsystem.size() == 0) && (_inputs.empty()); }
 
     uint64_t size() { return _inputs.size(); }
 
@@ -224,7 +224,7 @@ void InterleavedIOScheduler<T>::read_until_done(std::atomic_bool &cancel) {
         // parse data point(s) in round robin fashion until all files exhausted
         try {
             // TODO add timeout to reading
-            _in_buff.insert(std::make_pair(_inputs[_read_head].first, parse_single()), cancel);
+            _storage_subsystem.insert(std::make_pair(_inputs[_read_head].first, parse_single()), cancel);
         } catch (IOResourceExhaustedException &iosee) {
             // remove files after fully read
             _inputs.erase(_inputs.begin() + _read_head);
@@ -234,7 +234,7 @@ void InterleavedIOScheduler<T>::read_until_done(std::atomic_bool &cancel) {
 
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
-            _in_buff.flush();
+            _storage_subsystem.flush();
             cancel = true;
             throw IOResourceExhaustedException();
         }
@@ -267,17 +267,19 @@ void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std
 
 template<typename T>
 bool InterleavedIOScheduler<T>::begin_reading() {
-    std::thread(read_until_done, _halt_flag);
+    // spawn reading daemon
+    std::thread(read_until_done, _halt_flag).detach();
 }
 
 template<typename T>
 bool InterleavedIOScheduler<T>::stop_reading() {
+    // stop reading daemon
     _halt_flag = false;
 }
 
 template<typename T>
 std::vector<std::pair<uint64_t, T> > InterleavedIOScheduler<T>::request_bucket() {
-    std::unique_ptr<std::vector<std::pair<uint64_t, T> > > bucket = _in_buff.next_bucket_async(
+    std::unique_ptr<std::vector<std::pair<uint64_t, T> > > bucket = _storage_subsystem.next_bucket_async(
             std::chrono::milliseconds(500));
     if (bucket == nullptr) {
         throw TimeoutException();

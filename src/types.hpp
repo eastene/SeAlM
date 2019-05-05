@@ -26,6 +26,5 @@ struct CLIOptions {
 
 typedef std::vector<std::string> Read;
 typedef std::chrono::milliseconds Mills;
-typedef std::tuple<std::variant<std::string, uint32_t>, std::string, std::string> RedupeRef;
 
 #endif //ALIGNER_CACHE_TYPES_HPP

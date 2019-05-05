@@ -42,7 +42,7 @@ private:
     std::string _command;
 
     // Pipeline manager
-    BucketedPipelineManager<Read, std::string, RedupeRef, InMemCache<std::string, std::string> > _pipe;
+    BucketedPipelineManager<Read, std::string, std::string> _pipe;
 
     // metrics
     double _total_time;

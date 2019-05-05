@@ -8,6 +8,7 @@
 #include "../src/types.hpp"
 
 TEST_CASE("single file read and written correctly" "[BucketedPipelineManager]") {
-    //BucketedPipelineManager<Read, std::string, DummyCache<Read, std::string>>
-    BucketedPipelineManager<Read, std::string, RedupeRef, InMemCache<std::string, std::string>> pipeline;
+    BucketedPipelineManager<Read, std::string, std::string> pipeline;
+
+
 }

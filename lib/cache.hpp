@@ -19,12 +19,12 @@ protected:
     std::unordered_map<K, V> _cache;
 
     // Size limits
-    uint32_t _max_cache_size; // num of elements
+    uint64_t _max_cache_size; // num of elements
 
     // Metrics
     uint64_t _hits;
     uint64_t _misses;
-    uint32_t _keys;
+    uint64_t _keys;
 
     // Protected methods
     virtual void evict() = 0;
@@ -94,8 +94,6 @@ class LRUCache : public InMemCache<K, V> {
 protected:
     std::list<K> _order;
     std::unordered_map<K, typename std::list<K>::iterator> _order_lookup;
-
-    uint32_t _skip = 1;
 
     void evict() override;
 
@@ -170,7 +168,6 @@ template<typename K, typename V>
 void LRUCache<K, V>::insert(const K &key, const V &value) {
     if (this->_cache.find(key) == this->_cache.end()) {
         if (this->_cache.size() >= this->_max_cache_size) {
-            _skip = 50;
             evict();
         }
         _order.emplace_front(key);
