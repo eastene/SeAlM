@@ -28,6 +28,9 @@ private:
     uint64_t _current_chain;
     typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
 
+    // Atomic variables
+    std::atomic_bool _alive;
+
     // Locks for thread safety
     std::mutex _bucket_mutex;
 
@@ -36,27 +39,51 @@ private:
     std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
 
     // Functors
-
     std::function<uint64_t(T)> _hash_fn;
 
     // Private methods
     void initialize();
 
-    void add_bucket(uint64_t from_buffer, std::atomic_bool &cancel);
+    void add_bucket(uint64_t from_buffer);
 
 public:
 
+    /*
+     *  Constructors
+     */
+
     BufferedBuckets();
 
-    void insert(const T &data, std::atomic_bool &cancel);
+    /*
+     * Consumption Methods
+     */
 
-    void insert_async(const T &data, const std::chrono::milliseconds &timeout);
+    bool insert(const T &data);
+
+    std::future<bool> insert_async(const T &data);
+
+    /*
+     * Production Methods
+     */
+
+    std::unique_ptr<std::vector<T>> next_bucket();
+
+    std::future<std::unique_ptr<std::vector<T> > > next_bucket_async();
+
+    /*
+     * Forcing Methods
+     */
 
     void flush();
 
-    std::unique_ptr<std::vector<T>> next_bucket(std::atomic_bool &cancel);
+    void kill() { _alive = false; } // stop all read/writes pending if in deadlock, puts store in unsafe state
 
-    std::unique_ptr<std::vector<T>> next_bucket_async(const std::chrono::milliseconds &timeout);
+    // TODO: implement deadlock recovery
+    // bool recover(){if (!_alive) ...}
+
+    /*
+     * State Descriptors
+     */
 
     uint64_t size() { return _size; }
 
@@ -109,12 +136,13 @@ void BufferedBuckets<T>::initialize() {
     }
     _current_chain = 0;
     _next_bucket_itr = _buckets[0].end();
+    _alive = true;
 }
 
 template<typename T>
-void BufferedBuckets<T>::add_bucket(uint64_t from_buffer, std::atomic_bool &cancel) {
-    while (full() && !cancel);
-    if (!cancel) {
+void BufferedBuckets<T>::add_bucket(uint64_t from_buffer) {
+    while (full() && _alive);
+    if (_alive) {
         // acquire lock on bucket structure
         std::lock_guard<std::mutex> lock(_bucket_mutex);
         // add buffer data to new bucket and reset buffer
@@ -134,29 +162,23 @@ void BufferedBuckets<T>::add_bucket(uint64_t from_buffer, std::atomic_bool &canc
 }
 
 template<typename T>
-void BufferedBuckets<T>::insert(const T &data, std::atomic_bool &cancel) {
+bool BufferedBuckets<T>::insert(const T &data) {
     // find buffer for data and add
     uint64_t i = _hash_fn(data);
     _buffers[i]->emplace_back(data);
     _size++;
     // bucketize buffer if full and buffer space available
     if (_buffers[i]->size() >= _max_bucket_size) {
-        add_bucket(i, cancel);
+        add_bucket(i);
     }
+
+    return true;
 }
 
 template<typename T>
-void BufferedBuckets<T>::insert_async(const T &data, const std::chrono::milliseconds &timeout) {
-    std::atomic_bool cancel = false;
-    std::future<std::unique_ptr<std::vector<T> > > future = std::async(std::launch::async,
-                                                                       [&]() { return insert(data, cancel); });
-    std::future_status status;
-    status = future.wait_for(timeout);
-    cancel = true;
-
-    if (status != std::future_status::ready) {
-        //TODO: throw exception (?)
-    }
+std::future<bool> BufferedBuckets<T>::insert_async(const T &data) {
+    std::future<bool> future = std::async(std::launch::async, [&]() { return insert(data); });
+    return future;
 }
 
 template<typename T>
@@ -173,9 +195,9 @@ void BufferedBuckets<T>::flush() {
 }
 
 template<typename T>
-std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket(std::atomic_bool &cancel) {
-    while (_num_buckets <= 0 && !cancel);
-    if (!cancel) {
+std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
+    while (_num_buckets <= 0 && _alive);
+    if (_alive) {
         // acquire lock on bucket structure
         std::lock_guard<std::mutex> lock(_bucket_mutex);
         // retrieve next bucket and remove from chain
@@ -204,23 +226,11 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket(std::atomic_bool
 }
 
 template<typename T>
-std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket_async(const std::chrono::milliseconds &timeout) {
-    std::atomic_bool cancel = false;
+std::future<std::unique_ptr<std::vector<T> > >
+BufferedBuckets<T>::next_bucket_async() {
     std::future<std::unique_ptr<std::vector<T> > > future = std::async(std::launch::async,
-                                                                       [&]() { return next_bucket(cancel); });
-    std::future_status status;
-    status = future.wait_for(timeout);
-    cancel = true;
-
-    if (status == std::future_status::timeout) {
-        // separate out this status for future event handling of timed out future
-        return nullptr;
-    } else if (status == std::future_status::ready) {
-        return future.get();
-    } else {
-        // deferred, also separated out for future event handling of deferred future
-        return nullptr;
-    }
+                                                                       [&]() { return next_bucket(); });
+    return future;
 }
 
 

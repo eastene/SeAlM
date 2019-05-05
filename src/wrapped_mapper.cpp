@@ -92,20 +92,25 @@ void WrappedMapper::run_alignment() {
 
     _pipe.open();
 
+    // TODO: implement overlapping IO with alignment
+    std::shared_ptr<std::vector<Read>> next_bucket;
+    std::vector<std::string> alignments(_bucket_size);
+    std::future<std::shared_ptr<std::vector<Read> > > bucket_future = _pipe.read_async();
+    bucket_future.wait();
+    next_bucket = bucket_future.get();
+
     // call aligner to load reference into memory
     load_reference(_command);
 
-    std::vector<std::string> alignments(_bucket_size);
     try {
         while (true) {
             align_start = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
-            _pipe.next_bucket();
 
             _reads_seen += _pipe.current_bucket_size();
-            align(_command, _pipe.get_unique_batch(), &alignments);
+            call_aligner(_command, *next_bucket, &alignments);
 
-            _pipe.write(alignments);
+            _pipe.write_async(alignments);
 
             align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -133,7 +138,7 @@ void WrappedMapper::run_alignment() {
         // align final bucket
         align_start = std::chrono::duration_cast<Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-        align(_command, _pipe.get_unique_batch(), &alignments);
+        call_aligner(_command, _pipe.get_unique_batch(), &alignments);
         _pipe.write(alignments);
         align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 

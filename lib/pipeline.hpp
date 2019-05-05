@@ -56,7 +56,6 @@ protected:
     std::mutex _pipe_mutex;
 
     // Functors
-
     std::function<K(T)> extract_key; // extract key from data or transform data into key
 
     std::function<std::string(T, V)> postprocess_fn; // transform data and/or value to string for writing to file
@@ -76,7 +75,11 @@ public:
 
     std::shared_ptr<std::vector<T>> read();
 
-    void write(const std::vector<V> &alignment);
+    std::future<std::shared_ptr<std::vector<T> > > read_async();
+
+    bool write(const std::vector<V> &out);
+
+    std::future<bool> write_async(const std::vector<V> &out);
 
     void close();
 
@@ -186,7 +189,13 @@ std::shared_ptr<std::vector<T>> BucketedPipelineManager<T, K, V>::read() {
 }
 
 template<typename T, typename K, typename V>
-void BucketedPipelineManager<T, K, V>::write(const std::vector<V> &out) {
+std::future<std::shared_ptr<std::vector<T> > > BucketedPipelineManager<T, K, V>::read_async() {
+    std::future<std::shared_ptr<std::vector<T> > > future = std::async(std::launch::async, [&]() { return read(); });
+    return future;
+}
+
+template<typename T, typename K, typename V>
+bool BucketedPipelineManager<T, K, V>::write(const std::vector<V> &out) {
     std::lock_guard<std::mutex> lock(_pipe_mutex);
     if (!pipe_clear_flag) {
         // should have exactly as many unique enties as values
@@ -212,6 +221,14 @@ void BucketedPipelineManager<T, K, V>::write(const std::vector<V> &out) {
         _unique_entries.clear();
         pipe_clear_flag = true;
     }
+
+    return pipe_clear_flag;
+}
+
+template<typename T, typename K, typename V>
+std::future<bool> BucketedPipelineManager<T, K, V>::write_async(const std::vector<V> &out) {
+    std::future<bool> future = std::async(std::launch::async, [&]() { return write(out); });
+    return future;
 }
 
 template<typename T, typename K, typename V>

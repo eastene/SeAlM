@@ -54,6 +54,7 @@ private:
     // Effort limits
     uint64_t _max_io_interleave;
     uint64_t _out_buff_threshold;
+    std::chrono::milliseconds _max_wait_time;
 
     // Flags
     std::atomic_bool _halt_flag;
@@ -95,6 +96,8 @@ public:
 
     std::vector<std::pair<uint64_t, T> > request_bucket();
 
+    std::future<std::vector<std::pair<uint64_t, T> > > request_bucket_async();
+
     /*
      * Output functions
      */
@@ -111,8 +114,6 @@ public:
     std::vector<std::string> get_input_filenames() { return _inputs; }
 
     void set_input_pattern(const std::string &input_pattern) { _input_pattern = input_pattern; }
-
-    void set_input_files(const std::vector<std::string> &input_files);
 
     /*
      * State descriptors
@@ -142,11 +143,13 @@ T default_parser(std::ifstream &fin) {
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _max_io_interleave = 10;
+    _max_wait_time = 500;
     _read_head = 0;
     _halt_flag = false;
     _input_pattern = "";
     _auto_output_ext = "";
     _out_buff_threshold = 100000;
+
     _parsing_fn = std::function<T(std::ifstream)>([](std::ifstream fin) { return default_parser<T>(fin); });
 }
 
@@ -154,6 +157,7 @@ template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
                                                   std::function<T(std::ifstream)> &parse_func) {
     _max_io_interleave = 10;
+    _max_wait_time = 500;
     _read_head = 0;
     _halt_flag = false;
     _input_pattern = input_pattern;
@@ -279,12 +283,27 @@ bool InterleavedIOScheduler<T>::stop_reading() {
 
 template<typename T>
 std::vector<std::pair<uint64_t, T> > InterleavedIOScheduler<T>::request_bucket() {
-    std::unique_ptr<std::vector<std::pair<uint64_t, T> > > bucket = _storage_subsystem.next_bucket_async(
-            std::chrono::milliseconds(500));
-    if (bucket == nullptr) {
-        throw TimeoutException();
+    // request a bucket with deadlock detection
+    std::future<std::unique_ptr<std::vector<std::pair<uint64_t, T> > > > future_bucket = _storage_subsystem.next_bucket_async();
+    std::future_status status;
+    status = future_bucket.wait_for(_max_wait_time);
+
+    if (status == std::future_status::timeout) {
+        // separate out this status for future event handling of timed out future
+        _storage_subsystem.kill();
+        return nullptr;
+    } else if (status == std::future_status::ready) {
+        return future_bucket.get();
+    } else {
+        _storage_subsystem.kill();
+        // deferred, also separated out for future event handling of deferred future
+        return nullptr;
     }
-    return bucket.get();
+}
+
+template<typename T>
+std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket_async() {
+    return _storage_subsystem.next_bucket_async();
 }
 
 template<typename T>

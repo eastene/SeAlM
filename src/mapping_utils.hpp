@@ -106,7 +106,7 @@ void write_batch(const std::string &output_file, const std::vector<RedupeRef> ba
     fout.close();
 }
 
-void align(std::string &command, std::vector<Read> reduced_batch, std::vector<std::string> *alignments) {
+void call_aligner(std::string &command, std::vector<Read> reduced_batch, std::vector<std::string> *alignments) {
     alignments->clear();
     alignments->resize(reduced_batch.size());
     align_batch(command, reduced_batch, alignments);
