@@ -12,12 +12,12 @@
 
 
 struct CLIOptions {
-    std::string input_file;
     std::string input_file_pattern = "*.fastq";
+    std::string data_dir = "";
     std::string reference;
     std::string output_file;
     std::string metrics_file = "metrics.log";
-    uint32_t batch_size = 100000;
+    uint32_t batch_size = 50000;
     int manager_type = 0;
     int cache_type = 0;
     int verbose_flag = 0;

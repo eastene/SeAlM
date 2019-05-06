@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <cpp-subprocess/subprocess.hpp>
+#include "../lib/external/subprocess.hpp"
 #include "wrapped_mapper.hpp"
 
 void
@@ -72,52 +72,11 @@ align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::str
     }
 }
 
-std::string retag(const std::string &alignment, const std::string &header, const std::string &qual) {
-    char out[500];
-    std::string tag = header.substr(1, header.find(' ') - 1);
-    unsigned long sp1 = alignment.find('\t');
-    // TODO: replace qual score with one from this read
-    //unsigned long sp2 = alignment.find('\t', 9);
-    std::string untagged = alignment.substr(sp1);
-    sprintf(out, "%s\t%s", tag.c_str(), untagged.c_str());
-
-    return std::string(out);
-}
-
-void write_batch(const std::string &output_file, const std::vector<RedupeRef> batch,
-                 const std::vector<std::string> alignments) {
-    std::ofstream fout;
-    fout.open(output_file, std::ios::app);
-    if (alignments.size() < batch.size()) {
-        for (const auto &reduc_read : batch) {
-            if (std::holds_alternative<uint32_t>(std::get<0>(reduc_read))) {
-                fout << retag(alignments[std::get<uint32_t>(std::get<0>(reduc_read))], std::get<1>(reduc_read),
-                              std::get<2>(reduc_read)) << "\n";
-            } else {
-                fout << retag(std::get<std::string>(std::get<0>(reduc_read)), std::get<1>(reduc_read),
-                              std::get<2>(reduc_read)) << "\tC\n";
-            }
-        }
-    } else {
-        for (const auto &alignment : alignments) {
-            fout << alignment << "\n";
-        }
-    }
-    fout.close();
-}
-
 void call_aligner(std::string &command, std::vector<Read> reduced_batch, std::vector<std::string> *alignments) {
     alignments->clear();
     alignments->resize(reduced_batch.size());
     align_batch(command, reduced_batch, alignments);
 }
 
-void load_reference(std::string &command){
-    // TODO: find a more portable solution for calling aligner process
-    auto proc = subprocess::Popen({command}, subprocess::input{subprocess::PIPE},
-                                  subprocess::output{subprocess::PIPE},
-                                  subprocess::error{subprocess::PIPE});
-    auto obuf = proc.communicate("").first;
-}
 
 #endif //ALIGNER_CACHE_MAPPING_UTILS_HPP

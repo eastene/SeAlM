@@ -42,6 +42,7 @@ private:
     std::string _command;
 
     // Pipeline manager
+    PipelineParams _params;
     BucketedPipelineManager<Read, std::string, std::string> _pipe;
 
     // metrics

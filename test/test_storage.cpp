@@ -12,8 +12,7 @@
 
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<Read> bb;
-    std::atomic_bool cancel_ins = false;
+    BufferedBuckets<std::pair<uint64_t, Read>> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -21,55 +20,58 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     r[3] = "=====";
 
     for (int i = 1; i < 50000; i++) {
-        bb.insert(r, cancel_ins);
+        bb.insert(std::make_pair(i, r));
     }
 
     REQUIRE(bb.size() == 49999);
     REQUIRE(bb.num_buckets() == 0);
 
     SECTION("filling buffer adds single new bucket") {
-        bb.insert(r, cancel_ins);
+        bb.insert(std::make_pair(50000, r));
         REQUIRE(bb.size() == 50000);
         REQUIRE(bb.num_buckets() == 1);
     }
 
     SECTION("requesting bucket that exists returns unique pointer to bucket and does not timeout") {
-        bb.insert(r, cancel_ins);
-        std::atomic_bool cancel = false;
-        std::future<std::unique_ptr<std::vector<Read> > > future = std::async(std::launch::async,
-                                                                              [&]() { return bb.next_bucket(cancel); });
-        std::future_status status;
-        status = future.wait_for(std::chrono::seconds(1));
-        REQUIRE(status == std::future_status::ready);
-        REQUIRE(future.get()->size() == 50000);
+        bb.insert(std::make_pair(50000, r));
+        auto bucket = bb.next_bucket();
+        REQUIRE(bucket->size() == 50000);
         REQUIRE(bb.size() == 0);
     }
 
-    SECTION("requesting bucket will timeout when no bucket available") {
-        std::atomic_bool cancel = false;
-        std::future<std::unique_ptr<std::vector<Read> > > future = std::async(std::launch::async,
-                                                                              [&]() { return bb.next_bucket(cancel); });
+    SECTION("requesting bucket will stall when no bucket available") {
+        auto future = std::async(std::launch::async, [&]() { return bb.next_bucket(); });
         std::future_status status;
         status = future.wait_for(std::chrono::milliseconds(50));
-        cancel = true;
+        bb.kill();
         REQUIRE(status == std::future_status::timeout);
         REQUIRE(future.get() == nullptr);
+        bb.recover();
     }
 
     SECTION("call to next_bucket_async returns a bucket or times out if none available") {
-        bb.insert(r, cancel_ins);
-        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(500));
-        REQUIRE(bucket->size() == 50000);
+        bb.insert(std::make_pair(50000, r));
+        auto future = bb.next_bucket_async();
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
+        REQUIRE(future.get()->size() == 50000);
 
-        bucket = bb.next_bucket_async(std::chrono::milliseconds(500));
-        REQUIRE(bucket == nullptr);
+        future = bb.next_bucket_async();
+        status = future.wait_for(std::chrono::milliseconds(50));
+        bb.kill();
+        REQUIRE(status == std::future_status::timeout);
+        bb.recover();
     }
 
     SECTION("returned bucket contains expected values") {
-        bb.insert(r, cancel_ins);
-        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(500));
+        bb.insert(std::make_pair(50000, r));
+        auto future = bb.next_bucket_async();
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
         uint32_t matches = 0;
-        for (const auto &read : *bucket) {
+        auto bucket = std::move(future.get());
+        for (const auto &read_pair : *bucket) {
+            auto read = read_pair.second;
             if (read[0] == r[0] && read[1] == r[1] && read[2] == r[2] && read[3] == r[3])
                 matches++;
         }
@@ -79,15 +81,16 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     SECTION("flushing buffer creates bucket from non-empty buffer") {
         bb.flush();
         REQUIRE(bb.num_buckets() == 1);
-        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(500));
-        REQUIRE(bucket->size() == 49999);
+        auto future = bb.next_bucket_async();
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
+        REQUIRE(future.get()->size() == 49999);
     }
 }
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<Read> bb;
-    std::atomic_bool cancel_ins = false;
+    BufferedBuckets<std::pair<uint64_t, Read>> bb;
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -95,7 +98,7 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
     r[3] = "=====";
 
     for (int i = 0; i < 50000; i++) {
-        bb.insert(r, cancel_ins);
+        bb.insert(std::make_pair(i, r));
     }
 
     REQUIRE(bb.size() == 50000);
@@ -111,17 +114,22 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
         r[3] = "=====";
 
         for (int i = 0; i < 50000; i++) {
-            bb.insert(r, cancel_ins);
+            bb.insert(std::make_pair(i, r));
         }
 
         REQUIRE(bb.num_buckets() == 2);
 
-        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        REQUIRE((*bucket)[0][0] == old_label);
-        REQUIRE((*bucket)[0][1] == old_seq);
-        bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        REQUIRE((*bucket)[0][0] == r[0]);
-        REQUIRE((*bucket)[0][1] == r[1]);
+        auto future = bb.next_bucket_async();
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
+        auto bucket = std::move(future.get());
+        REQUIRE((*bucket)[0].second[0] == old_label);
+        REQUIRE((*bucket)[0].second[1] == old_seq);
+        future = bb.next_bucket_async();
+        status = future.wait_for(std::chrono::milliseconds(50));
+        bucket = std::move(future.get());
+        REQUIRE((*bucket)[0].second[0] == r[0]);
+        REQUIRE((*bucket)[0].second[1] == r[1]);
     };
 
     SECTION("longest bucket chain will be consumed after first"){
@@ -134,7 +142,7 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
         std::string old_seq = r[1];
 
         for (int i = 0; i < 100000; i++) {
-            bb.insert(r, cancel_ins);
+            bb.insert(std::make_pair(i, r));
         }
 
         r[0] = "@test2";
@@ -143,20 +151,29 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
         r[3] = "=====";
 
         for (int i = 0; i < 50000; i++) {
-            bb.insert(r, cancel_ins);
+            bb.insert(std::make_pair(i, r));
         }
 
         REQUIRE(bb.num_buckets() == 4);
 
-        auto bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        REQUIRE((*bucket)[0][0] == old_label);
-        REQUIRE((*bucket)[0][1] == old_seq);
-        bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        REQUIRE((*bucket)[0][0] == old_label);
-        REQUIRE((*bucket)[0][1] == old_seq);
-        bucket = bb.next_bucket_async(std::chrono::milliseconds(50));
-        REQUIRE((*bucket)[0][0] == r[0]);
-        REQUIRE((*bucket)[0][1] == r[1]);
+        auto future = bb.next_bucket_async();
+        std::future_status status;
+        status = future.wait_for(std::chrono::milliseconds(50));
+        auto bucket = std::move(future.get());
+        future = bb.next_bucket_async();
+        status = future.wait_for(std::chrono::milliseconds(50));
+        bucket = std::move(future.get());
+        REQUIRE((*bucket)[0].second[0] == old_label);
+        REQUIRE((*bucket)[0].second[1] == old_seq);
+        future = bb.next_bucket_async();
+        status = future.wait_for(std::chrono::milliseconds(50));
+        bucket = std::move(future.get());
+        REQUIRE((*bucket)[0].second[0] == old_label);
+        REQUIRE((*bucket)[0].second[1] == old_seq);
+        future = bb.next_bucket_async();
+        status = future.wait_for(std::chrono::milliseconds(50));
+        bucket = std::move(future.get());
+        REQUIRE((*bucket)[0].second[0] == r[0]);
+        REQUIRE((*bucket)[0].second[1] == r[1]);
     };
 }

@@ -14,31 +14,32 @@ void WrappedMapper::initialize_alignment() {
     if (_pipe.empty()) {
         std::cout << "Nothing to align. Stopping." << std::endl;
         exit(0);
-    } else {
-        std::cout << "Files found matching input pattern:" << std::endl;
-        for (const auto &f : _pipe.get_input_filenames()) {
-            std::cout << f << std::endl;
-        }
     }
+//    else {
+//        std::cout << "Files found matching input pattern:" << std::endl;
+//        for (const auto &f : _pipe.get_input_filenames()) {
+//            std::cout << f << std::endl;
+//        }
+//    }
 
     // TODO move this functionality to io system
     // check each file is readable
-    for (const auto &in_file : _input_files) {
-        std::ofstream fin(in_file);
-        if (!fin) {
-            fin.close();
-            std::cout << in_file << " not readable. Aborting." << std::endl;
-            exit(1);
-        }
-        fin.close();
-    }
-
-    // clear or create output files
-    for (const auto &out_file : _output_files) {
-        std::ofstream fout(out_file);
-        fout << "";
-        fout.close();
-    }
+//    for (const auto &in_file : _input_files) {
+//        std::ofstream fin(in_file);
+//        if (!fin) {
+//            fin.close();
+//            std::cout << in_file << " not readable. Aborting." << std::endl;
+//            exit(1);
+//        }
+//        fin.close();
+//    }
+//
+//    // clear or create output files
+//    for (const auto &out_file : _output_files) {
+//        std::ofstream fout(out_file);
+//        fout << "";
+//        fout.close();
+//    }
 
     // reset metrics
     _reads_aligned = 0;
@@ -49,7 +50,9 @@ void WrappedMapper::initialize_alignment() {
 
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
     // extract necessary parameters
-    _pipe.set_input_pattern(opts.input_file_pattern);
+    _params.input_file_pattern = opts.input_file_pattern;
+    _params.data_dir = opts.data_dir;
+    _pipe.set_params(_params);
     _reference = opts.reference;
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
@@ -92,25 +95,33 @@ void WrappedMapper::run_alignment() {
 
     _pipe.open();
 
-    // TODO: implement overlapping IO with alignment
-    std::shared_ptr<std::vector<Read>> next_bucket;
+
     std::vector<std::string> alignments(_bucket_size);
-    std::future<std::shared_ptr<std::vector<Read> > > bucket_future = _pipe.read_async();
-    bucket_future.wait();
-    next_bucket = bucket_future.get();
+    auto read_future = _pipe.read_async();
+    read_future.wait();
+    auto next_bucket = read_future.get();
 
     // call aligner to load reference into memory
-    load_reference(_command);
+    std::cout << "First call to aligner may take substantial time while reference is loaded into memory..." << std::endl;
+    call_aligner(_command, next_bucket, &alignments);
+
+    auto write_future = _pipe.write_async(alignments);
+    write_future.wait();
 
     try {
         while (true) {
             align_start = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
+            // TODO: implement overlapping IO with alignment
+            read_future = _pipe.read_async();
+            read_future.wait();
+            next_bucket = read_future.get();
 
             _reads_seen += _pipe.current_bucket_size();
-            call_aligner(_command, *next_bucket, &alignments);
+            call_aligner(_command, next_bucket, &alignments);
 
-            _pipe.write_async(alignments);
+            write_future = _pipe.write_async(alignments);
+            write_future.wait();
 
             align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -138,7 +149,7 @@ void WrappedMapper::run_alignment() {
         // align final bucket
         align_start = std::chrono::duration_cast<Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-        call_aligner(_command, _pipe.get_unique_batch(), &alignments);
+        call_aligner(_command, _pipe.read(), &alignments);
         _pipe.write(alignments);
         align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -149,7 +160,7 @@ void WrappedMapper::run_alignment() {
         _align_time += (align_end - align_start) / 1000.00;
 
         _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
-        _hits_vec.emplace_back(_pipe->get_hits());
+        //_hits_vec.emplace_back(_pipe->get_hits());
         _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
         _reads_aligned_vec.emplace_back(_reads_aligned);
     }

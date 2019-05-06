@@ -39,7 +39,7 @@ private:
     std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
 
     // Functors
-    std::function<uint64_t(T)> _hash_fn;
+    std::function<uint64_t(const T&)> _hash_fn;
 
     // Private methods
     void initialize();
@@ -79,7 +79,7 @@ public:
     void kill() { _alive = false; } // stop all read/writes pending if in deadlock, puts store in unsafe state
 
     // TODO: implement deadlock recovery
-    // bool recover(){if (!_alive) ...}
+    bool recover(){if (!_alive) _alive = true;}
 
     /*
      * State Descriptors
@@ -96,9 +96,10 @@ public:
  * Functors
  */
 
-template<typename T>
+template <typename T>
 uint64_t default_hash(T &data) {
-    switch (data[1][0]) {
+    auto payload = data.second;
+    switch (payload[1][0]) {
         case 'A':
             return 0;
         case 'C':
@@ -119,7 +120,7 @@ template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
     _max_buckets = 4;
     _max_bucket_size = 50000;
-    _hash_fn = std::function<uint64_t(T)>([](T data) { return default_hash(data); });
+    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
     initialize();
 }
 
@@ -219,7 +220,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         // adjust state after consumption
         _size -= out->size();
         _num_buckets--;
-        return out;
+        return std::move(out);
     } else {
         return nullptr;
     }
@@ -228,9 +229,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
 template<typename T>
 std::future<std::unique_ptr<std::vector<T> > >
 BufferedBuckets<T>::next_bucket_async() {
-    std::future<std::unique_ptr<std::vector<T> > > future = std::async(std::launch::async,
-                                                                       [&]() { return next_bucket(); });
-    return future;
+    return std::async(std::launch::async, [&]() { return std::move(next_bucket()); });
 }
 
 

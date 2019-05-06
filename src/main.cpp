@@ -10,18 +10,19 @@ int main(int argc, char **argv) {
         static struct option long_options[] =
                 {
                         /* These options set a flag. */
-                        {"verbose",      no_argument,       &opts.verbose_flag, 1},
-                        {"quiet",        no_argument,       &opts.verbose_flag, 0},
+                        {"verbose",       no_argument,       &opts.verbose_flag, 1},
+                        {"quiet",         no_argument,       &opts.verbose_flag, 0},
                         /* These options don’t set a flag.
                            We distinguish them by their indices. */
-                        {"input_file",   required_argument, 0,                  'i'},
-                        {"reference",    required_argument, 0,                  'x'},
-                        {"output_file",  required_argument, 0,                  's'},
-                        {"metrics_file", required_argument, 0,                  'e'},
-                        {"batch_size",   optional_argument, 0,                  'b'},
-                        {"manager_type", required_argument, 0,                  'm'},
-                        {"cache_type",   required_argument, 0,                  'c'},
-                        {0, 0,                              0,                  0}
+                        {"input_pattern", required_argument, 0,                  'i'},
+                        {"data_dir",      required_argument, 0,                  'd'},
+                        {"reference",     required_argument, 0,                  'x'},
+                        {"output_file",   required_argument, 0,                  's'},
+                        {"metrics_file",  required_argument, 0,                  'e'},
+                        {"batch_size",    optional_argument, 0,                  'b'},
+                        {"manager_type",  required_argument, 0,                  'm'},
+                        {"cache_type",    required_argument, 0,                  'c'},
+                        {0, 0,                               0,                  0}
                 };
 
         /* getopt_long stores the option index here. */
@@ -47,7 +48,12 @@ int main(int argc, char **argv) {
 
             case 'i':
                 if (optarg)
-                    opts.input_file = optarg;
+                    opts.input_file_pattern = optarg;
+                break;
+
+            case 'd':
+                if (optarg)
+                    opts.data_dir = optarg;
                 break;
 
             case 'x':
@@ -90,7 +96,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    assert(!opts.input_file.empty());
     assert(!opts.reference.empty());
     assert(!opts.output_file.empty());
 
