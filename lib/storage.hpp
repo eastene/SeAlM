@@ -92,6 +92,8 @@ public:
     uint64_t num_buckets() { return _num_buckets; }
 
     bool full() { return _num_buckets >= _max_buckets; }
+
+    bool empty() { return _num_buckets == 0;}
 };
 
 /*
@@ -125,9 +127,9 @@ uint64_t dummy_hash(T &data){
  */
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 1;
+    _max_buckets = 16;
     _max_bucket_size = 100000;
-    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return dummy_hash(data); });
+    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
     initialize();
 }
 

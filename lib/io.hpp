@@ -21,6 +21,10 @@
 class IOResourceExhaustedException : public std::exception {
 };
 
+class RequestToEmptyStorageException : public std::exception {
+};
+
+
 class TimeoutException : public std::exception {
 
 };
@@ -292,12 +296,20 @@ bool InterleavedIOScheduler<T>::stop_reading() {
 template<typename T>
 std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket() {
     // request a bucket sequentially
-    return _storage_subsystem.next_bucket();
+    if (!_storage_subsystem.empty() || !_inputs.empty()) {
+        return _storage_subsystem.next_bucket();
+    } else {
+        throw RequestToEmptyStorageException();
+    }
 }
 
 template<typename T>
 std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket_async() {
-    return std::move(_storage_subsystem.next_bucket_async());
+    if (!_storage_subsystem.empty() || !_inputs.empty()) {
+        return std::move(_storage_subsystem.next_bucket_async());
+    } else {
+        throw RequestToEmptyStorageException();
+    }
 }
 
 template<typename T>

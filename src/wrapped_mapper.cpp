@@ -97,26 +97,33 @@ void WrappedMapper::run_alignment() {
 
     _pipe.open();
 
+    auto write_future = _pipe.write_async(alignments);
+    auto read_future = _pipe.read_async();
+    auto next_bucket = read_future.get();
     try {
         while (true) {
+
             align_start = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
             // TODO: implement overlapping IO with alignment
-            auto next_bucket = _pipe.read();
-
             this_bucket = _pipe.current_bucket_size();
             _reads_seen += this_bucket;
+
+            //write_future.wait();
+            read_future = _pipe.read_async();
+
             alignments.resize(next_bucket.size());
             call_aligner(_command, next_bucket, &alignments);
 
-            _pipe.write(alignments);
+            next_bucket = read_future.get();
+
+            write_future = _pipe.write_async(alignments);
 
             align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
             // update state
             _align_calls++;
             _reads_aligned += alignments.size();
-            
             _align_time += (align_end - align_start) / 1000.00;
 
             _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
@@ -133,30 +140,30 @@ void WrappedMapper::run_alignment() {
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
         }
-    } catch (IOResourceExhaustedException &ioree) {
+    } catch (RequestToEmptyStorageException &rtese) {
         // align final bucket
-        // TODO: find out why the last alignmetn is deadlocking
-        align_start = std::chrono::duration_cast<Mills>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-        auto next_bucket = _pipe.read();
-        this_bucket = _pipe.current_bucket_size();
-        _reads_seen += this_bucket;
 
-        alignments.resize(next_bucket.size());
-        call_aligner(_command, next_bucket, &alignments);
-
-        _pipe.write(alignments);
-        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-
-        // update state
-        _align_calls++;
-        _reads_aligned += alignments.size();
-        _align_time += (align_end - align_start) / 1000.00;
-
-        _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
-        //_hits_vec.emplace_back(_pipe->get_hits());
-        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
-        _reads_aligned_vec.emplace_back(_reads_aligned);
+//        align_start = std::chrono::duration_cast<Mills>(
+//                std::chrono::system_clock::now().time_since_epoch()).count();
+//        next_bucket = _pipe.read();
+//        this_bucket = _pipe.current_bucket_size();
+//        _reads_seen += this_bucket;
+//
+//        alignments.resize(next_bucket.size());
+//        call_aligner(_command, next_bucket, &alignments);
+//
+//        _pipe.write(alignments);
+//        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+//
+//        // update state
+//        _align_calls++;
+//        _reads_aligned += alignments.size();
+//        _align_time += (align_end - align_start) / 1000.00;
+//
+//        _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
+//        //_hits_vec.emplace_back(_pipe->get_hits());
+//        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+//        _reads_aligned_vec.emplace_back(_reads_aligned);
     }
 
     // stop reading (in case of exception above) and flush output buffer

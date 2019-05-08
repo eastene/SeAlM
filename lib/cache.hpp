@@ -9,6 +9,7 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <mutex>
 #include <unordered_map>
 #include "../src/types.hpp"
 
@@ -26,6 +27,9 @@ protected:
     uint64_t _misses;
     uint64_t _keys;
 
+    // Locks for thread safety
+    std::mutex _cache_mutex;
+
     // Protected methods
     virtual void evict() = 0;
 
@@ -38,6 +42,10 @@ public:
      */
 
     InMemCache() : _max_cache_size{900000}, _hits{0}, _misses{0}, _keys{0} {};
+
+    /*
+     * State Descriptors
+     */
 
     double hit_rate() {
         return _misses > 0 ? _hits / (_misses + _hits) : 0;
@@ -175,6 +183,7 @@ LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
 
 template<typename K, typename V>
 void LRUCache<K, V>::evict() {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     std::string key = _order.back();
     _order.pop_back();
     _order_lookup.erase(key);
@@ -184,6 +193,7 @@ void LRUCache<K, V>::evict() {
 
 template<typename K, typename V>
 void LRUCache<K, V>::insert(const K &key, const V &value) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     if (this->_cache.find(key) == this->_cache.end()) {
         if (this->_cache.size() >= this->_max_cache_size) {
             evict();
@@ -200,6 +210,7 @@ void LRUCache<K, V>::insert(const K &key, const V &value) {
 
 template<typename K, typename V>
 void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     if (this->_cache.find(key) == this->_cache.end()) {
         _order.emplace_front(key);
         _order_lookup.emplace(key, _order.begin());
@@ -220,12 +231,15 @@ void LRUCache<K, V>::trim() {
 
 template<typename K, typename V>
 typename std::unordered_map<K, V>::iterator LRUCache<K, V>::find(const K &key) {
-    this->_cache.find(key) != this->_cache.end() ? this->_hits++ : this->_misses++;
-    return this->_cache.find(key);
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    auto find_ptr = this->_cache.find(key);
+    find_ptr != this->_cache.end() ? this->_hits++ : this->_misses++;
+    return find_ptr;
 }
 
 template<typename K, typename V>
 V &LRUCache<K, V>::at(const K &key) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     _order.erase(_order_lookup[key]);
     _order.emplace_front(key);
     _order_lookup.insert_or_assign(key, _order.begin());
@@ -234,6 +248,7 @@ V &LRUCache<K, V>::at(const K &key) {
 
 template<typename K, typename V>
 V &LRUCache<K, V>::operator[](K &key) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     return this->_cache[key];
 }
 
@@ -243,6 +258,7 @@ V &LRUCache<K, V>::operator[](K &key) {
  */
 template<typename K, typename V>
 void MRUCache<K, V>::evict() {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     std::string key = this->_order.front();
     this->_order.pop_front();
     this->_order_lookup.erase(key);
