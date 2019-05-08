@@ -40,7 +40,7 @@ protected:
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    LRUCache<K, V> _cache_subsystem;
+    DummyCache<K, V> _cache_subsystem;
 
     // Effort limits
     uint64_t _max_bucket_size;
@@ -148,7 +148,7 @@ K example_extraction_fn(T &data) {
 template<typename T, typename K, typename V>
 BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
     _max_bucket_size = 50000;
-    _compression_level = NONE;
+    _compression_level = FULL;
     _pipe_clear_flag = false;
     _postprocess_fn = std::function<std::string(T &, V &)>(
             [&](T &data, V &value) { return example_posprocess_fn<T, K, V>(data, value); });
@@ -178,7 +178,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
 
         // prepare to compress
         _current_bucket.resize(next_bucket->size());
-        _multiplexer.reserve(next_bucket->size());
+        _multiplexer.resize(next_bucket->size());
         // extract data (separate from file id) and compress
         uint64_t i = 0;
         for (const auto &mtpx_item : *next_bucket) {
@@ -218,7 +218,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
             } else {
                 // unique, non-cached value return as part of compressed bucket
                 _unique_entries.emplace_back(mtpx_item.second);
-                _multiplexer[i] = std::make_pair(mtpx_item.first, i);
+                _multiplexer[i] = std::make_pair(mtpx_item.first, _unique_entries.size() - 1);
 
                 // store for later lookup to detect further duplicates
                 if (_compression_level > NONE) {
@@ -258,15 +258,16 @@ bool BucketedPipelineManager<T, K, V>::write(std::vector<V> &out) {
                 // found in cache earlier, report cached value
                 //TODO: find out why some alignments are empty here, causing errors in substring
                 line_out = _postprocess_fn(_current_bucket[i],
-                                                       _cache_subsystem.at(_extract_key_fn(_current_bucket[i])));
+                                           _cache_subsystem.at(_extract_key_fn(_current_bucket[i])));
                 _io_subsystem.write_async(_multiplexer[i].first, line_out);
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = _postprocess_fn(_current_bucket[i], out[_multiplexer[i].second]);
-                _cache_subsystem.insert(_extract_key_fn(_current_bucket[i]), out[i]);
+                _cache_subsystem.insert_no_evict(_extract_key_fn(_current_bucket[i]), out[_multiplexer[i].second]);
                 _io_subsystem.write_async(_multiplexer[i].first, line_out);
             }
         }
+        _cache_subsystem.trim();
 
         // clear internal data structures and make ready for next reading
         _current_bucket.clear();

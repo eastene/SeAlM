@@ -15,7 +15,7 @@ include(FetchContent)
 #FetchContent_Declare(
 #        subprocess
 #        GIT_REPOSITORY https://github.com/arun11299/cpp-subprocess.git
-#        GIT_TAG v1.0.4
+#        GIT_TAG 871577770a437b2784d0c75888f8101b0b42de4d # only version verfied to work
 #)
 
 FetchContent_Declare(
@@ -25,7 +25,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(aligner_cache src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp src/types.hpp lib/storage.hpp lib/io.hpp lib/external/subprocess.hpp)
+add_executable(aligner_cache src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp src/types.hpp lib/storage.hpp lib/io.hpp)
 add_executable(test_aligner_cache test/test_main.cpp test/test_storage.cpp lib/storage.hpp test/test_cache.cpp lib/io.hpp test/test_io.cpp test/test_pipeline.cpp)
 
 target_link_libraries(aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs)

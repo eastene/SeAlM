@@ -29,7 +29,7 @@ private:
     typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
 
     // Atomic variables
-    std::atomic_bool _alive;
+    bool _alive;
 
     // Locks for thread safety
     std::mutex _bucket_mutex;
@@ -53,6 +53,8 @@ public:
      */
 
     BufferedBuckets();
+
+    BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_size);
 
     /*
      * Consumption Methods
@@ -113,13 +115,27 @@ uint64_t default_hash(T &data) {
     }
 }
 
+template <typename T>
+uint64_t dummy_hash(T &data){
+    return 0;
+}
+
 /*
  *  Method Implementations
  */
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 4;
-    _max_bucket_size = 50000;
+    _max_buckets = 1;
+    _max_bucket_size = 100000;
+    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return dummy_hash(data); });
+    initialize();
+}
+
+template<typename T>
+BufferedBuckets<T>::BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_size) {
+    _max_buckets = max_buckets;
+    _max_bucket_size = max_bucket_size;
+
     _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
     initialize();
 }

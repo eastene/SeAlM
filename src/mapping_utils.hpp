@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include "../lib/external/subprocess.hpp"
+#include "../lib/external/cpp-subprocess-master/subprocess.hpp"
 #include "wrapped_mapper.hpp"
 
 void
@@ -62,13 +62,14 @@ align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::str
     auto proc = subprocess::Popen({command}, subprocess::input{subprocess::PIPE},
                                   subprocess::output{subprocess::PIPE},
                                   subprocess::error{subprocess::PIPE});
-    auto obuf = proc.communicate(ss.str().c_str(), ss.str().size()).first;
-    int k = 0;
-    for (const auto &c : obuf.buf) {
-        if (c == '\n')
-            k++;
-        else
-            (*alignments)[k].push_back(c);
+    auto res = proc.communicate(ss.str().c_str(), ss.str().size());
+    //std::cout << res.first.buf.data();
+    uint64_t k = 0;
+
+    std::stringstream out_ss;
+    out_ss << res.first.buf.data();
+    for(std::string line; std::getline(out_ss, line);) {
+        (*alignments)[k++] = line;
     }
 }
 

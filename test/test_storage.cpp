@@ -12,7 +12,7 @@
 
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    BufferedBuckets<std::pair<uint64_t, Read>> bb (4, 50000);
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -90,7 +90,7 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    BufferedBuckets<std::pair<uint64_t, Read>> bb (4, 50000);
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -176,4 +176,53 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
         REQUIRE((*bucket)[0].second[0] == r[0]);
         REQUIRE((*bucket)[0].second[1] == r[1]);
     };
+
+    SECTION("bucket hash function divides reads correctly"){
+        Read r1 (4, "");
+        r1[0] = "@test2";
+        r1[1] = "TTAGC";
+        r1[2] = "+";
+        r1[3] = "=====";
+
+        Read r2 (4, "");
+        r2[0] = "@test3";
+        r2[1] = "CCAGC";
+        r2[2] = "+";
+        r2[3] = "=====";
+
+        for (int i = 0; i < 100000; i++) {
+            r = i % 2 == 0 ? r1 : r2;
+            bb.insert(std::make_pair(i, r));
+        }
+
+        auto bucket = bb.next_bucket();
+        bool is_A = true;
+        for (const auto & read : *bucket){
+            if (read.second[1][0] != 'A'){
+                is_A = false;
+                break;
+            }
+        }
+        REQUIRE(is_A);
+
+        bucket = bb.next_bucket();
+        bool is_C = true;
+        for (const auto & read : *bucket){
+            if (read.second[1][0] != 'C'){
+                is_C = false;
+                break;
+            }
+        }
+        REQUIRE(is_C);
+
+        bucket = bb.next_bucket();
+        bool is_T = true;
+        for (const auto & read : *bucket){
+            if (read.second[1][0] != 'T'){
+                is_T = false;
+                break;
+            }
+        }
+        REQUIRE(is_T);
+    }
 }

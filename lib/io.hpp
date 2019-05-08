@@ -252,31 +252,33 @@ void InterleavedIOScheduler<T>::read_until_done() {
 
 template<typename T>
 void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std::string>> _multiplexed_buff) {
-    // put buffer in order of files to make writing more efficient
-    std::sort(_multiplexed_buff.begin(), _multiplexed_buff.end(),
-              [](const std::pair<uint64_t, std::string> &a, const std::pair<uint64_t, std::string> &b) {
-                  return a.first < b.first;
-              });
+    if (!_multiplexed_buff.empty()) {
+        // put buffer in order of files to make writing more efficient
+        std::sort(_multiplexed_buff.begin(), _multiplexed_buff.end(),
+                  [](const std::pair<uint64_t, std::string> &a, const std::pair<uint64_t, std::string> &b) {
+                      return a.first < b.first;
+                  });
 
-    // open first file
-    uint64_t curr_file = _multiplexed_buff[0].first;
-    std::ofstream fout(_outputs[curr_file]);
+        // open first file
+        uint64_t curr_file = _multiplexed_buff[0].first;
+        std::ofstream fout(_outputs[curr_file]);
 
-    // write each line in buffer, switching files when necessary
-    for (const auto &mtpx_line : _multiplexed_buff) {
-        if (mtpx_line.first != curr_file) {
-            curr_file = mtpx_line.first;
-            fout.close();
-            fout.open(_outputs[curr_file]);
+        // write each line in buffer, switching files when necessary
+        for (const auto &mtpx_line : _multiplexed_buff) {
+            if (mtpx_line.first != curr_file) {
+                curr_file = mtpx_line.first;
+                fout.close();
+                fout.open(_outputs[curr_file]);
+            }
+            fout << mtpx_line.second;
         }
-        fout << mtpx_line.second;
     }
 }
 
 template<typename T>
 bool InterleavedIOScheduler<T>::begin_reading() {
     // spawn reading daemon
-    std::thread ([&]() { this->read_until_done(); }).detach();
+    std::thread([&]() { this->read_until_done(); }).detach();
     return true;
 }
 
@@ -289,22 +291,8 @@ bool InterleavedIOScheduler<T>::stop_reading() {
 
 template<typename T>
 std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket() {
-    // request a bucket with deadlock detection
-    auto future_bucket = std::move(_storage_subsystem.next_bucket_async());
-    std::future_status status;
-    status = future_bucket.wait_for(_max_wait_time);
-
-    if (status == std::future_status::timeout) {
-        // separate out this status for future event handling of timed out future
-        _storage_subsystem.kill();
-        return nullptr;
-    } else if (status == std::future_status::ready) {
-        return std::move(future_bucket.get());
-    } else {
-        _storage_subsystem.kill();
-        // deferred, also separated out for future event handling of deferred future
-        return nullptr;
-    }
+    // request a bucket sequentially
+    return _storage_subsystem.next_bucket();
 }
 
 template<typename T>
@@ -314,9 +302,11 @@ std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::re
 
 template<typename T>
 void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line) {
-    _out_buff.push_back(std::make_pair(out_ind, line));
+    _out_buff.push_back(std::make_pair(out_ind, line + "\n"));
     if (_out_buff.size() >= _out_buff_threshold) {
-        std::thread([&](){write_buffer(_out_buff);}).detach();
+        write_buffer(_out_buff);
+        _out_buff.clear();
+        //std::thread([&](){write_buffer(_out_buff);}).detach();
     }
 }
 

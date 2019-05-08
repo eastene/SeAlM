@@ -59,6 +59,10 @@ public:
 
     virtual void insert(const K &key, const V &value) = 0;
 
+    virtual void insert_no_evict(const K &key, const V &value) = 0;
+
+    virtual void trim() = 0;
+
     virtual typename std::unordered_map<K, V>::iterator find(const K &key) = 0;
 
     virtual V &at(const K &key) = 0;
@@ -82,6 +86,10 @@ public:
 
     void insert(const K &key, const V &value) override;
 
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
+
     typename std::unordered_map<K, V>::iterator find(const K &key) override;
 
     V &at(const K &key) override;
@@ -102,6 +110,10 @@ public:
     LRUCache();
 
     void insert(const K &key, const V &value) override;
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
 
     typename std::unordered_map<K, V>::iterator find(const K &key) override;
 
@@ -126,6 +138,12 @@ void DummyCache<K, V>::evict() {}
 
 template<typename K, typename V>
 void DummyCache<K, V>::insert(const K &key, const V &value) {}
+
+template<typename K, typename V>
+void DummyCache<K, V>::insert_no_evict(const K &key, const V &value) {}
+
+template<typename K, typename V>
+void DummyCache<K, V>::trim() {}
 
 template<typename K, typename V>
 typename std::unordered_map<K, V>::iterator DummyCache<K, V>::find(const K &key) {
@@ -173,9 +191,31 @@ void LRUCache<K, V>::insert(const K &key, const V &value) {
         _order.emplace_front(key);
         _order_lookup.emplace(key, _order.begin());
         this->_cache.emplace(key, value);
+
+        // only change recency of read on access, not on addition
+        this->_keys++;
     }
-    // only change recency of read on access, not on addition
-    this->_keys++;
+
+}
+
+template<typename K, typename V>
+void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
+    if (this->_cache.find(key) == this->_cache.end()) {
+        _order.emplace_front(key);
+        _order_lookup.emplace(key, _order.begin());
+        this->_cache.emplace(key, value);
+
+        // only change recency of read on access, not on addition
+        this->_keys++;
+    }
+
+}
+
+template<typename K, typename V>
+void LRUCache<K, V>::trim() {
+    for (uint64_t i = this->_cache.size(); i > this->_max_cache_size; i--) {
+        evict();
+    }
 }
 
 template<typename K, typename V>

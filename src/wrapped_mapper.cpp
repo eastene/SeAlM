@@ -90,48 +90,36 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     long align_start = 0, align_end = 0;
+    long this_bucket = 0;
 
+    std::vector<std::string> alignments;
     initialize_alignment();
 
     _pipe.open();
-
-
-    std::vector<std::string> alignments(_bucket_size);
-    auto read_future = _pipe.read_async();
-    read_future.wait();
-    auto next_bucket = read_future.get();
-
-    // call aligner to load reference into memory
-    std::cout << "First call to aligner may take substantial time while reference is loaded into memory..." << std::endl;
-    call_aligner(_command, next_bucket, &alignments);
-
-    auto write_future = _pipe.write_async(alignments);
-    write_future.wait();
 
     try {
         while (true) {
             align_start = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
             // TODO: implement overlapping IO with alignment
-            read_future = _pipe.read_async();
-            read_future.wait();
-            next_bucket = read_future.get();
+            auto next_bucket = _pipe.read();
 
-            _reads_seen += _pipe.current_bucket_size();
+            this_bucket = _pipe.current_bucket_size();
+            _reads_seen += this_bucket;
+            alignments.resize(next_bucket.size());
             call_aligner(_command, next_bucket, &alignments);
 
-            write_future = _pipe.write_async(alignments);
-            write_future.wait();
+            _pipe.write(alignments);
 
             align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
             // update state
             _align_calls++;
             _reads_aligned += alignments.size();
-            _reads_seen += _pipe.current_bucket_size();
+            
             _align_time += (align_end - align_start) / 1000.00;
 
-            _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
+            _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
             _hits_vec.emplace_back(_pipe.cache_hits());
             _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
             _reads_aligned_vec.emplace_back(_reads_aligned);
@@ -141,25 +129,31 @@ void WrappedMapper::run_alignment() {
             std::cout << "Reads aligned " << _reads_aligned << "\n";
             std::cout << "Total reads " << _reads_seen << "\n";
             std::cout << _pipe;
-            std::cout << "Throughput: " << (_bucket_size / ((align_end - align_start) / 1000.00)) << " r/s\n";
+            std::cout << "Throughput: " << (this_bucket / ((align_end - align_start) / 1000.00)) << " r/s\n";
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
         }
     } catch (IOResourceExhaustedException &ioree) {
         // align final bucket
+        // TODO: find out why the last alignmetn is deadlocking
         align_start = std::chrono::duration_cast<Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-        call_aligner(_command, _pipe.read(), &alignments);
+        auto next_bucket = _pipe.read();
+        this_bucket = _pipe.current_bucket_size();
+        _reads_seen += this_bucket;
+
+        alignments.resize(next_bucket.size());
+        call_aligner(_command, next_bucket, &alignments);
+
         _pipe.write(alignments);
         align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         // update state
         _align_calls++;
         _reads_aligned += alignments.size();
-        _reads_seen += _pipe.current_bucket_size();
         _align_time += (align_end - align_start) / 1000.00;
 
-        _throughput_vec.emplace_back(_bucket_size / ((align_end - align_start) / 1000.00));
+        _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
         //_hits_vec.emplace_back(_pipe->get_hits());
         _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
         _reads_aligned_vec.emplace_back(_reads_aligned);
