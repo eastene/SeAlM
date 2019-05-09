@@ -41,7 +41,7 @@ protected:
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    LRUCache<K, V> _cache_subsystem;
+    MRUCache<K, V> _cache_subsystem;
 
     // Effort limits
     uint64_t _max_bucket_size;

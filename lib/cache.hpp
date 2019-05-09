@@ -183,7 +183,7 @@ LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
 
 template<typename K, typename V>
 void LRUCache<K, V>::evict() {
-    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    // not publically facing, doesn't require lock (may change in future)
     std::string key = _order.back();
     _order.pop_back();
     _order_lookup.erase(key);
@@ -224,7 +224,8 @@ void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
 
 template<typename K, typename V>
 void LRUCache<K, V>::trim() {
-    for (uint64_t i = this->_cache.size(); i > this->_max_cache_size; i--) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    for (uint64_t i = this->_cache.size(); i >= this->_max_cache_size; i--) {
         evict();
     }
 }
@@ -258,7 +259,6 @@ V &LRUCache<K, V>::operator[](K &key) {
  */
 template<typename K, typename V>
 void MRUCache<K, V>::evict() {
-    std::lock_guard<std::mutex> lock(this->_cache_mutex);
     std::string key = this->_order.front();
     this->_order.pop_front();
     this->_order_lookup.erase(key);

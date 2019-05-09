@@ -156,7 +156,7 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _read_head = 0;
     _halt_flag = false;
     _input_pattern = "";
-    _auto_output_ext = "";
+    _auto_output_ext = "_out";
     _out_buff_threshold = 100000;
     _parsing_fn = std::function<T(std::ifstream &)>([](std::ifstream &fin) { return default_parser<T>(fin); });
 }
@@ -265,7 +265,7 @@ void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std
 
         // open first file
         uint64_t curr_file = _multiplexed_buff[0].first;
-        std::ofstream fout(_outputs[curr_file]);
+        std::ofstream fout(_outputs[curr_file], std::ios::app);
 
         // write each line in buffer, switching files when necessary
         for (const auto &mtpx_line : _multiplexed_buff) {

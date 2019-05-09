@@ -118,6 +118,39 @@ uint64_t default_hash(T &data) {
 }
 
 template <typename T>
+uint64_t double_hash(T &data) {
+    auto payload = data.second;
+    uint64_t hash = 0b0;
+    switch (payload[1][0]) {
+        case 'A':
+            hash |= 0b00;
+        case 'C':
+            hash |= 0b01;
+        case 'T':
+            hash |= 0b10;
+        case 'G':
+            hash |= 0b11;
+        default:
+            hash |= 0b11;
+    }
+
+    switch (payload[1][1]) {
+        case 'A':
+            hash |= 0b0000;
+        case 'C':
+            hash |= 0b0100;
+        case 'T':
+            hash |= 0b1000;
+        case 'G':
+            hash |= 0b1100;
+        default:
+            hash |= 0b1100;
+    }
+
+    return hash;
+}
+
+template <typename T>
 uint64_t dummy_hash(T &data){
     return 0;
 }
@@ -127,7 +160,7 @@ uint64_t dummy_hash(T &data){
  */
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 16;
+    _max_buckets = 64;
     _max_bucket_size = 100000;
     _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
     initialize();
