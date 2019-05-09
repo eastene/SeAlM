@@ -22,7 +22,7 @@ private:
     uint64_t _max_bucket_size;
 
     // State variables
-    uint64_t _num_buckets;
+    uint64_t _num_full_buckets;
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
     uint64_t _current_chain;
@@ -39,7 +39,7 @@ private:
     std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
 
     // Functors
-    std::function<uint64_t(const T&)> _hash_fn;
+    std::function<uint64_t(const T &)> _hash_fn;
 
     // Private methods
     void initialize();
@@ -81,7 +81,7 @@ public:
     void kill() { _alive = false; } // stop all read/writes pending if in deadlock, puts store in unsafe state
 
     // TODO: implement deadlock recovery
-    bool recover(){if (!_alive) _alive = true;}
+    bool recover() { if (!_alive) _alive = true; }
 
     /*
      * State Descriptors
@@ -89,70 +89,35 @@ public:
 
     uint64_t size() { return _size; }
 
-    uint64_t num_buckets() { return _num_buckets; }
+    uint64_t num_buckets() { return _num_full_buckets; }
 
-    bool full() { return _num_buckets >= _max_buckets; }
+    bool full() { return _num_full_buckets >= _max_buckets; }
 
-    bool empty() { return _num_buckets == 0;}
+    bool empty() { return _num_full_buckets == 0; }
+
+    /*
+     * Getters/Setters
+     */
+
+    void set_num_buckets(uint64_t max_buckets) { _max_buckets = max_buckets; }
+
+    void set_bucket_size(uint64_t max_bucket_size) { _max_bucket_size = max_bucket_size; }
+
+    void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
+
+    /*
+     * Operator Overloads
+     */
+    BufferedBuckets &operator=(const BufferedBuckets &other);
 };
 
 /*
  * Functors
  */
 
-template <typename T>
+template<typename T>
 uint64_t default_hash(T &data) {
-    auto payload = data.second;
-    switch (payload[1][0]) {
-        case 'A':
-            return 0;
-        case 'C':
-            return 1;
-        case 'T':
-            return 2;
-        case 'G':
-            return 3;
-        default:
-            return 3;
-    }
-}
-
-template <typename T>
-uint64_t double_hash(T &data) {
-    auto payload = data.second;
-    uint64_t hash = 0b0;
-    switch (payload[1][0]) {
-        case 'A':
-            hash |= 0b00;
-        case 'C':
-            hash |= 0b01;
-        case 'T':
-            hash |= 0b10;
-        case 'G':
-            hash |= 0b11;
-        default:
-            hash |= 0b11;
-    }
-
-    switch (payload[1][1]) {
-        case 'A':
-            hash |= 0b0000;
-        case 'C':
-            hash |= 0b0100;
-        case 'T':
-            hash |= 0b1000;
-        case 'G':
-            hash |= 0b1100;
-        default:
-            hash |= 0b1100;
-    }
-
-    return hash;
-}
-
-template <typename T>
-uint64_t dummy_hash(T &data){
-    return 0;
+    return 0; // does nothing
 }
 
 /*
@@ -160,9 +125,9 @@ uint64_t dummy_hash(T &data){
  */
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 64;
+    _max_buckets = 16;
     _max_bucket_size = 100000;
-    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
+    _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
     initialize();
 }
 
@@ -171,14 +136,14 @@ BufferedBuckets<T>::BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_si
     _max_buckets = max_buckets;
     _max_bucket_size = max_bucket_size;
 
-    _hash_fn = std::function<uint64_t(const T&)>([](const T &data) { return default_hash(data); });
+    _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
     initialize();
 }
 
 template<typename T>
 void BufferedBuckets<T>::initialize() {
     _size = 0;
-    _num_buckets = 0;
+    _num_full_buckets = 0;
     _buckets.resize(_max_buckets);
     _buffers.resize(_max_buckets);
     _chain_lengths.resize(_max_buckets);
@@ -207,7 +172,7 @@ void BufferedBuckets<T>::add_bucket(uint64_t from_buffer) {
         }
         // adjust state after bucket production
         _chain_lengths[from_buffer]++;
-        _num_buckets++;
+        _num_full_buckets++;
     } else {
         //TODO: throw exception (?), perform any cleanup
     }
@@ -240,7 +205,7 @@ void BufferedBuckets<T>::flush() {
         if (!_buffers[i]->empty()) {
             _buckets[i].emplace_back(std::move(_buffers[i]));
             _buffers[i] = std::make_unique<std::vector<T>>();
-            _num_buckets++;
+            _num_full_buckets++;
             _chain_lengths[i]++;
         }
     }
@@ -248,7 +213,7 @@ void BufferedBuckets<T>::flush() {
 
 template<typename T>
 std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
-    while (_num_buckets <= 0 && _alive);
+    while (_num_full_buckets <= 0 && _alive);
     if (_alive) {
         // acquire lock on bucket structure
         std::lock_guard<std::mutex> lock(_bucket_mutex);
@@ -270,7 +235,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         _next_bucket_itr = _buckets[_current_chain].begin();
         // adjust state after consumption
         _size -= out->size();
-        _num_buckets--;
+        _num_full_buckets--;
         return std::move(out);
     } else {
         return nullptr;
@@ -281,6 +246,50 @@ template<typename T>
 std::future<std::unique_ptr<std::vector<T> > >
 BufferedBuckets<T>::next_bucket_async() {
     return std::async(std::launch::async, [&]() { return std::move(next_bucket()); });
+}
+
+template<typename T>
+BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &other) {
+    // Sizing limits
+    _max_buckets = other._max_buckets;
+    _max_bucket_size = other._max_bucket_size;
+
+    // State variables
+//    _num_full_buckets = other._num_full_buckets;
+//    _size = other._size;
+//    _chain_lengths = other._chain_lengths;
+//    _current_chain = other._current_chain;
+//
+//    _next_bucket_itr = other._next_bucket_itr;
+//
+//    // Atomic variables
+//    _alive = other._alive;
+
+    initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
+
+    // Locks for thread safety
+//    if (!other._bucket_mutex.try_lock()) {
+//        _bucket_mutex.lock();
+//    } else {
+//        other._bucket_mutex.unlock();
+//        _bucket_mutex.unlock();
+//    }
+
+
+    // Data structures
+//    _buckets.resize(other._buckets.size());
+//    for (uint64_t i = 0; i < other._buckets.size(); i++) {
+//        for (uint64_t j = 0; j < other._buckets[i].size(); j++){
+//            _buckets[i].emplace_back(std::move(other._buckets[i][j]));
+//        }
+//    }
+//    _buffers.resize(other._buffers.size());
+//    for (uint64_t i = 0; i < other._buffers.size(); i++) {
+//        _buffers[i] = std::move(other._buffers[i]);
+//    }
+
+    // Functors
+    _hash_fn = other._hash_fn;
 }
 
 

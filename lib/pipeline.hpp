@@ -41,10 +41,7 @@ protected:
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    MRUCache<K, V> _cache_subsystem;
-
-    // Effort limits
-    uint64_t _max_bucket_size;
+    std::unique_ptr<InMemCache<K, V> > _cache_subsystem;
 
     // Current bucket data structures
     std::vector<T> _current_bucket;
@@ -105,7 +102,21 @@ public:
     void close();
 
     /*
-     * State descriptors
+     * Getters/Setters
+     */
+
+    void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
+
+    void set_cache_subsystem(InMemCache<K, V> &other) { _cache_subsystem = std::make_unique<LRUCache<K, V> >(); }
+
+    void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = other; }
+
+    void set_postprocess_fn(std::function<std::string(T &, V &)> fn) { _postprocess_fn = fn; }
+
+    void set_extract_key_fn(std::function<K(T &)> fn) { _extract_key_fn = fn; }
+
+    /*
+     * State Descriptors
      */
 
     bool empty() { return _io_subsystem.empty(); }
@@ -115,16 +126,18 @@ public:
 
     uint64_t compressed_size() { return _unique_entries.size(); }
 
-    uint64_t cache_hits() { return _cache_subsystem.hits(); }
+    uint64_t cache_hits() { return _cache_subsystem->hits(); }
 
     /*
      * Operator Overloads
      */
 
     friend std::ostream &operator<<(std::ostream &output, const BucketedPipelineManager &B) {
-        output << B._cache_subsystem << std::endl;
+        output << *B._cache_subsystem << std::endl;
         return output;
     }
+
+    BucketedPipelineManager &operator=(const BucketedPipelineManager &other);
 };
 
 /*
@@ -132,24 +145,13 @@ public:
  */
 
 template<typename T, typename K, typename V>
-std::string example_posprocess_fn(T &data, V &value) {
-    std::stringstream ss;
-    std::string tag = data[0].substr(1, data[0].find(' ') - 1);
-    unsigned long sp1 = value.find('\t');
-    // TODO: replace qual score with one from this read
-    //unsigned long sp2 = alignment.find('\t', 9);
-    std::string untagged = value.substr(sp1);
-
-    ss << tag;
-    ss << "\t";
-    ss << untagged;
-
-    return ss.str();
+std::string default_postprocess_fn(T &data, V &value) {
+    return value;
 }
 
 template<typename T, typename K, typename V>
-K example_extraction_fn(T &data) {
-    return data[1];
+K default_extraction_fn(T &data) {
+    return data[0];
 }
 
 /*
@@ -158,13 +160,12 @@ K example_extraction_fn(T &data) {
 
 template<typename T, typename K, typename V>
 BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
-    _max_bucket_size = 50000;
-    _compression_level = FULL;
+    _compression_level = NONE;
     _pipe_clear_flag = false;
     _postprocess_fn = std::function<std::string(T &, V &)>(
-            [&](T &data, V &value) { return example_posprocess_fn<T, K, V>(data, value); });
-    _extract_key_fn = std::function<K(T &)>([&](T &data) { return example_extraction_fn<T, K, V>(data); });
-    //TODO: initialize io and cache
+            [&](T &data, V &value) { return default_postprocess_fn<T, K, V>(data, value); });
+    _extract_key_fn = std::function<K(T &)>([&](T &data) { return default_extraction_fn<T, K, V>(data); });
+    _cache_subsystem = std::make_unique<DummyCache<K, V> >();
 }
 
 template<typename T, typename K, typename V>
@@ -223,7 +224,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
                     default:
                         break;
                 }
-            } else if (_cache_subsystem.find(_extract_key_fn(_current_bucket[i])) != _cache_subsystem.end()) {
+            } else if (_cache_subsystem->find(_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
                 // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
                 _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
             } else {
@@ -259,7 +260,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     std::unordered_map<K, std::pair<uint64_t, uint64_t> > duplicate_finder;
     std::vector<T> unique_entries;
     auto temp_bucket = std::make_unique<std::vector<T> >();
-    auto temp_multiplexer = std::make_unique<std::vector<std::pair<uint64_t, uint64_t>> >();
+    auto temp_multiplexer = std::make_unique<std::vector<std::pair<uint64_t, uint64_t>>>();
     auto temp_cache_hits = std::make_unique<std::queue<V> >();
 
     temp_bucket->resize(next_bucket->size());
@@ -299,11 +300,11 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
                 default:
                     break;
             }
-        } else if (_cache_subsystem.find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem.end()) {
+        } else if (_cache_subsystem->find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
             // TODO make this atomic
             // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
             (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-            temp_cache_hits->push(_cache_subsystem.at(_extract_key_fn((*temp_bucket)[i])));
+            temp_cache_hits->push(_cache_subsystem->at(_extract_key_fn((*temp_bucket)[i])));
         } else {
             // unique, non-cached value return as part of compressed bucket
             unique_entries.emplace_back(mtpx_item.second);
@@ -346,16 +347,16 @@ bool BucketedPipelineManager<T, K, V>::write(std::vector<V> &out) {
             if (_multiplexer[i].second == UINT64_MAX) {
                 // found in cache earlier, report cached value
                 line_out = _postprocess_fn(_current_bucket[i],
-                                           _cache_subsystem.at(_extract_key_fn(_current_bucket[i])));
+                                           _cache_subsystem->at(_extract_key_fn(_current_bucket[i])));
                 _io_subsystem.write_async(_multiplexer[i].first, line_out);
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = _postprocess_fn(_current_bucket[i], out[_multiplexer[i].second]);
-                _cache_subsystem.insert_no_evict(_extract_key_fn(_current_bucket[i]), out[_multiplexer[i].second]);
+                _cache_subsystem->insert_no_evict(_extract_key_fn(_current_bucket[i]), out[_multiplexer[i].second]);
                 _io_subsystem.write_async(_multiplexer[i].first, line_out);
             }
         }
-        _cache_subsystem.trim();
+        _cache_subsystem->trim();
 
         // clear internal data structures and make ready for next reading
         _current_bucket.clear();
@@ -390,11 +391,12 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = _postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
-                _cache_subsystem.insert_no_evict(_extract_key_fn((*temp_bucket)[i]), out[(*temp_multiplexer)[i].second]);
+                _cache_subsystem->insert_no_evict(_extract_key_fn((*temp_bucket)[i]),
+                                                  out[(*temp_multiplexer)[i].second]);
                 _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
             }
         }
-        _cache_subsystem.trim();
+        _cache_subsystem->trim();
     }
 }
 
@@ -409,6 +411,40 @@ void BucketedPipelineManager<T, K, V>::close() {
     _pipe_clear_flag = false;
     _io_subsystem.stop_reading();
     _io_subsystem.flush();
+}
+
+template<typename T, typename K, typename V>
+BucketedPipelineManager<T, K, V> &BucketedPipelineManager<T, K, V>::operator=(const BucketedPipelineManager &other) {
+    // IO variables
+    _io_subsystem = other._io_subsystem;
+
+    // Global cache variables
+    // TODO implement cross-only compression for caching
+    _cache_subsystem = other._cache_subsystem;
+
+    // Current bucket data structures
+    _current_bucket = other._current_bucket;
+    _unique_entries = other._unique_entries;
+    _multiplexer = other._multiplexer;
+
+    // Lock free I/O buffers
+    _bucket_buffer = other._bucket_buffer;
+    _multiplexer_buffer = other._multiplexer_buffer;
+    _cached_values = other._cached_values;
+
+    // Compression variables
+    _compression_level = other._compression_level;
+    _duplicate_finder = other._duplicate_finder;
+
+    // State variables
+    _pipe_clear_flag = other._pipe_clear_flag; // previous bucket is ready to write
+
+    // Locks for thread safety
+    _pipe_mutex = other._pipe_mutex;
+
+    // Functors
+    _extract_key_fn = other._extract_key_fn;
+    _postprocess_fn = other._postprocess_fn;
 }
 
 #endif //ALIGNER_CACHE_PIPELINE_HPP

@@ -18,6 +18,7 @@
 #include "../lib/pipeline.hpp"
 #include "types.hpp"
 #include "../lib/io.hpp"
+#include "../lib/config.hpp"
 
 class WrappedMapper {
 private:
@@ -61,6 +62,8 @@ private:
 
 public:
     explicit WrappedMapper(CLIOptions &opts);
+
+    explicit WrappedMapper(ConfigParser &configs);
 
     void run_alignment();
 

@@ -117,16 +117,27 @@ public:
 
     std::vector<std::string> get_input_filenames() { return _inputs; }
 
+    void set_max_interleave(uint64_t max_interleave){_max_io_interleave=max_interleave;}
+
     void set_input_pattern(const std::string &input_pattern) { _input_pattern = input_pattern; }
 
+    void set_out_file_ext(const std::string &file_ext) { _auto_output_ext = file_ext; }
+
+    void set_storage_subsystem(const BufferedBuckets<std::pair<uint64_t, T> > &other) { _storage_subsystem = other; }
+
     /*
-     * State descriptors
+     * State Descriptors
      */
 
     bool empty() { return (_storage_subsystem.size() == 0) && (_inputs.empty()); }
 
     uint64_t size() { return _inputs.size(); }
 
+    /*
+     * Operator Overloads
+     */
+
+    InterleavedIOScheduler &operator=(const InterleavedIOScheduler &other);
 };
 
 /*
@@ -151,7 +162,7 @@ T default_parser(std::ifstream &fin) {
 
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler() {
-    _max_io_interleave = 10;
+    _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
     _halt_flag = false;
@@ -164,7 +175,7 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
                                                   std::function<T(std::ifstream)> &parse_func) {
-    _max_io_interleave = 10;
+    _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
     _halt_flag = false;
@@ -272,10 +283,11 @@ void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std
             if (mtpx_line.first != curr_file) {
                 curr_file = mtpx_line.first;
                 fout.close();
-                fout.open(_outputs[curr_file]);
+                fout.open(_outputs[curr_file], std::ios::app);
             }
             fout << mtpx_line.second;
         }
+        fout.close();
     }
 }
 
@@ -325,6 +337,35 @@ void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line)
 template<typename T>
 void InterleavedIOScheduler<T>::flush() {
     write_buffer(_out_buff);
+}
+
+template<typename T>
+InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const InterleavedIOScheduler<T> &other) {
+    // IO handles
+    _inputs = other._inputs; // pair of unique file id and file path
+    _seek_poses = other._seek_poses;
+    _outputs = other._outputs;
+    _read_head = other._read_head;
+
+    // IO buffers
+    _storage_subsystem = std::move(other._storage_subsystem);
+    _out_buff = other._out_buff;
+
+    // Effort limits
+    _max_io_interleave = other._max_io_interleave;
+    _out_buff_threshold = other._out_buff_threshold;
+    _max_wait_time = other._max_wait_time;
+
+    // Flags
+    _halt_flag.store(other._halt_flag.load());
+
+    // Automated file formatting variables
+    _input_pattern = other._input_pattern;
+    _input_ext = other._input_ext;
+    _auto_output_ext = other._auto_output_ext; // used if modifying extension of input to generate output
+
+    // Functors
+    _parsing_fn = other._parsing_fn;
 }
 
 #endif //ALIGNER_CACHE_IO_HPP

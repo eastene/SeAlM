@@ -9,6 +9,7 @@
 #include <regex>
 #include "wrapped_mapper.hpp"
 #include "mapping_utils.hpp"
+#include "prep_experiment.hpp"
 
 void WrappedMapper::initialize_alignment() {
     if (_pipe.empty()) {
@@ -71,20 +72,46 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 
     // command
     std::stringstream command_s;
-    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --mm --no-hd -p 3 -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;
     command_s << " -U -";
     _command = command_s.str();
 
+}
 
-    // metrics
-    _total_time = 0;
-    _align_time = 0;
-    _reads_seen = 0;
-    _reads_aligned = 0;
-    _align_calls = 0;
+WrappedMapper::WrappedMapper(ConfigParser &configs) {
+
+    if (!configs.contains("reference")){
+        std::cout << "No reference file specified. Aborting." << std::endl;
+        exit(1);
+    }
+    _reference = configs.get_val("reference");
+
+    //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
+    //assert (['.fastq', '.fasta', '.fa', '.fq'])'
+    //assert (os.path.splitext(self._output_file)[1].lower() == '.sam')
+
+    prep_experiment(configs, &_pipe);
+
+    // extract extra parameters
+    _qual_thresh = 5225;
+
+    // derived parameters
+    _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
+    _read_size = _input_type == 'q' ? 4 : 3;
+
+    // command
+    // TODO: Allow command to come from config
+    std::stringstream command_s;
+    command_s << "bowtie2 --mm --no-hd -p 3 -";
+    command_s << _input_type;
+    command_s << " -x ";
+    command_s << _reference;
+    command_s << " -U -";
+    _command = command_s.str();
+
 }
 
 void WrappedMapper::run_alignment() {
@@ -111,7 +138,7 @@ void WrappedMapper::run_alignment() {
 
             //write_future.wait();
             read_future = _pipe.read_async();
-
+            // auto next_bucket = _pipe.read();
             alignments.resize(next_bucket.size());
             call_aligner(_command, next_bucket, &alignments);
 

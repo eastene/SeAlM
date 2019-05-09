@@ -1,9 +1,12 @@
 #include <iostream>
 #include <getopt.h>
 #include "wrapped_mapper.hpp"
+#include "../lib/config.hpp"
 
 int main(int argc, char **argv) {
     CLIOptions opts;
+    ConfigParser cfp;
+
     int c;
 
     while (true) {
@@ -19,16 +22,15 @@ int main(int argc, char **argv) {
                         {"reference",     required_argument, 0,                  'x'},
                         {"output_file",   required_argument, 0,                  's'},
                         {"metrics_file",  required_argument, 0,                  'e'},
-                        {"batch_size",    optional_argument, 0,                  'b'},
-                        {"manager_type",  required_argument, 0,                  'm'},
-                        {"cache_type",    required_argument, 0,                  'c'},
+                        {"bucket_size",   optional_argument, 0,                  'b'},
+                        {"from_config",   required_argument, 0,                  'c'},
                         {0, 0,                               0,                  0}
                 };
 
         /* getopt_long stores the option index here. */
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "i:x:s:b:m:c",
+        c = getopt_long(argc, argv, "i:x:s:b:c",
                         long_options, &option_index);
 
         /* Detect the end of the options. */
@@ -83,7 +85,7 @@ int main(int argc, char **argv) {
 
             case 'c':
                 if (optarg)
-                    opts.cache_type = std::stoi(optarg);
+                    cfp.parse(optarg);
                 break;
 
             case '?':
@@ -113,13 +115,25 @@ int main(int argc, char **argv) {
         putchar('\n');
     }
 
-    // perform alignment with args
-    WrappedMapper wm(opts);
-    wm.run_alignment();
-    // print final metrics
-    std::cout << wm;
-    // log per-batch metrics
-    std::ofstream log(opts.metrics_file);
-    log << wm.prepare_log();
-    log.close();
+    if (cfp.has_configs()) {
+        // perform alignment with config file
+        WrappedMapper wm(cfp);
+        wm.run_alignment();
+        // print final metrics
+        std::cout << wm;
+        // log per-batch metrics
+        std::ofstream log(opts.metrics_file);
+        log << wm.prepare_log();
+        log.close();
+    } else {
+        // perform alignment with args
+        WrappedMapper wm(opts);
+        wm.run_alignment();
+        // print final metrics
+        std::cout << wm;
+        // log per-batch metrics
+        std::ofstream log(opts.metrics_file);
+        log << wm.prepare_log();
+        log.close();
+    }
 }
