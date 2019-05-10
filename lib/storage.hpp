@@ -18,7 +18,8 @@ template<typename T>
 class BufferedBuckets {
 private:
     // Sizing limits
-    uint16_t _max_buckets;
+    uint64_t _max_buckets;
+    uint64_t _table_width;
     uint64_t _max_bucket_size;
 
     // State variables
@@ -99,11 +100,16 @@ public:
      * Getters/Setters
      */
 
+    uint64_t capacity() { return _max_buckets; }
+
     void set_num_buckets(uint64_t max_buckets) { _max_buckets = max_buckets; }
 
     void set_bucket_size(uint64_t max_bucket_size) { _max_bucket_size = max_bucket_size; }
 
     void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
+
+    // TODO: add resize funtion that doesn't reinitialize all state
+    void set_table_width(uint64_t table_width) { _table_width = table_width; initialize(); }
 
     /*
      * Operator Overloads
@@ -125,7 +131,8 @@ uint64_t default_hash(T &data) {
  */
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 16;
+    _max_buckets = 1;
+    _table_width = 1;
     _max_bucket_size = 100000;
     _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
     initialize();
@@ -134,6 +141,7 @@ BufferedBuckets<T>::BufferedBuckets() {
 template<typename T>
 BufferedBuckets<T>::BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_size) {
     _max_buckets = max_buckets;
+    _table_width = 1;
     _max_bucket_size = max_bucket_size;
 
     _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
@@ -144,10 +152,10 @@ template<typename T>
 void BufferedBuckets<T>::initialize() {
     _size = 0;
     _num_full_buckets = 0;
-    _buckets.resize(_max_buckets);
-    _buffers.resize(_max_buckets);
-    _chain_lengths.resize(_max_buckets);
-    for (uint16_t i = 0; i < _max_buckets; i++) {
+    _buckets.resize(_table_width);
+    _buffers.resize(_table_width);
+    _chain_lengths.resize(_table_width);
+    for (uint16_t i = 0; i < _table_width; i++) {
         _buffers[i] = std::make_unique<std::vector<T>>();
         _chain_lengths[i] = 0;
     }
@@ -181,6 +189,7 @@ void BufferedBuckets<T>::add_bucket(uint64_t from_buffer) {
 template<typename T>
 bool BufferedBuckets<T>::insert(const T &data) {
     // find buffer for data and add
+    //TODO: resize table if i goes beyond bounds
     uint64_t i = _hash_fn(data);
     _buffers[i]->emplace_back(data);
     _size++;
@@ -223,6 +232,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         // consume chains until empty, then move to next chain, chosen as longest chain
         _chain_lengths[_current_chain]--;
         if (_buckets[_current_chain].empty()) {
+            std::cout << "Switching chains." << std::endl;
             uint16_t max_elem = 0;
             for (uint32_t i = 0; i < _chain_lengths.size(); i++) {
                 if (_chain_lengths[i] > max_elem) {
@@ -252,6 +262,7 @@ template<typename T>
 BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &other) {
     // Sizing limits
     _max_buckets = other._max_buckets;
+    _table_width = other._table_width;
     _max_bucket_size = other._max_bucket_size;
 
     // State variables

@@ -117,7 +117,7 @@ public:
 
     std::vector<std::string> get_input_filenames() { return _inputs; }
 
-    void set_max_interleave(uint64_t max_interleave){_max_io_interleave=max_interleave;}
+    void set_max_interleave(uint64_t max_interleave) { _max_io_interleave = max_interleave; }
 
     void set_input_pattern(const std::string &input_pattern) { _input_pattern = input_pattern; }
 
@@ -131,7 +131,11 @@ public:
 
     bool empty() { return (_storage_subsystem.size() == 0) && (_inputs.empty()); }
 
+    bool full() { return _storage_subsystem.full(); }
+
     uint64_t size() { return _inputs.size(); }
+
+    uint64_t capacity() { return _storage_subsystem.capacity(); }
 
     /*
      * Operator Overloads

@@ -107,10 +107,14 @@ void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::stri
 
     if (cfp.contains("hash_func")) {
         std::string hash_func = cfp.get_val("hash_func");
-        if (hash_func == "single")
+        if (hash_func == "single") {
             bb.set_hash_fn(single_hash);
-        else if (hash_func == "double")
+            bb.set_table_width(4);
+        }
+        else if (hash_func == "double") {
             bb.set_hash_fn(double_hash);
+            bb.set_table_width(16);
+        }
         // else keep default
     }
 

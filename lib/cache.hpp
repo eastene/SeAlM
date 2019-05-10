@@ -39,7 +39,7 @@ public:
      * Implemented Base Methods
      */
 
-    InMemCache() : _max_cache_size{900000}, _hits{0}, _misses{0}, _keys{0} {};
+    InMemCache() : _max_cache_size{1048576}, _hits{0}, _misses{0}, _keys{0} {};
 
     void set_max_size(uint64_t max_size){_max_cache_size = max_size;}
 

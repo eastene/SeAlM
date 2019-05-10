@@ -8,7 +8,7 @@ n_logs = len(argv) - 1
 if n_logs > 0:
     fig, ax = plt.subplots(1, 2)
     for log in argv[1:]:
-        data = pd.read_csv(log)
+        data = pd.read_csv(log, comment='#')
         ax[0].plot(data['Throughput'][:-1])
         ax[0].set_xlabel('Batches (x100000 reads)')
         ax[0].set_ylabel('Throughput (reads/second)')

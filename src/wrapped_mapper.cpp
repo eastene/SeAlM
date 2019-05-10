@@ -47,6 +47,7 @@ void WrappedMapper::initialize_alignment() {
     _align_time = 0;
     _reads_seen = 0;
     _total_time = 0;
+    _align_calls = 0;
 }
 
 WrappedMapper::WrappedMapper(CLIOptions &opts) {
@@ -83,7 +84,7 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 
 WrappedMapper::WrappedMapper(ConfigParser &configs) {
 
-    if (!configs.contains("reference")){
+    if (!configs.contains("reference")) {
         std::cout << "No reference file specified. Aborting." << std::endl;
         exit(1);
     }
@@ -124,29 +125,28 @@ void WrappedMapper::run_alignment() {
 
     _pipe.open();
 
-    auto write_future = _pipe.write_async(alignments);
+    // align first bucket synchronously since aligner may have to load reference
+    // and this data point should be ignored due to variable time spent loading
     auto read_future = _pipe.read_async();
     auto next_bucket = read_future.get();
+
     try {
         while (true) {
-
-            align_start = std::chrono::duration_cast<Mills>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
-            // TODO: implement overlapping IO with alignment
             this_bucket = _pipe.current_bucket_size();
             _reads_seen += this_bucket;
-
-            //write_future.wait();
             read_future = _pipe.read_async();
-            // auto next_bucket = _pipe.read();
+
             alignments.resize(next_bucket.size());
+            align_start = std::chrono::duration_cast<Mills>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
             call_aligner(_command, next_bucket, &alignments);
+            align_end = std::chrono::duration_cast<Mills>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
 
             next_bucket = read_future.get();
 
-            write_future = _pipe.write_async(alignments);
+            auto write_future = _pipe.write_async(alignments);
 
-            align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
             // update state
             _align_calls++;
@@ -166,39 +166,17 @@ void WrappedMapper::run_alignment() {
             std::cout << "Throughput: " << (this_bucket / ((align_end - align_start) / 1000.00)) << " r/s\n";
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
+            write_future.wait();
         }
-    } catch (RequestToEmptyStorageException &rtese) {
-        // align final bucket
-
-//        align_start = std::chrono::duration_cast<Mills>(
-//                std::chrono::system_clock::now().time_since_epoch()).count();
-//        next_bucket = _pipe.read();
-//        this_bucket = _pipe.current_bucket_size();
-//        _reads_seen += this_bucket;
-//
-//        alignments.resize(next_bucket.size());
-//        call_aligner(_command, next_bucket, &alignments);
-//
-//        _pipe.write(alignments);
-//        align_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-//
-//        // update state
-//        _align_calls++;
-//        _reads_aligned += alignments.size();
-//        _align_time += (align_end - align_start) / 1000.00;
-//
-//        _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
-//        //_hits_vec.emplace_back(_pipe->get_hits());
-//        _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
-//        _reads_aligned_vec.emplace_back(_reads_aligned);
-    }
+    } catch (RequestToEmptyStorageException &rtese) {}
 
     // stop reading (in case of exception above) and flush output buffer
     _pipe.close();
 
     long end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     _total_time = (end - start) / 1000.00;
-    std::cout << "===== COMPLETE =====" << std::endl;
+    std::cout << "===== COMPLETE =====" <<
+              std::endl;
 }
 
 std::string WrappedMapper::prepare_log() {
