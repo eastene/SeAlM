@@ -115,7 +115,7 @@ public:
      * Getters/Setters
      */
 
-    std::vector<std::string> get_input_filenames() { return _inputs; }
+    std::vector<std::string> get_input_filenames();
 
     void set_max_interleave(uint64_t max_interleave) { _max_io_interleave = max_interleave; }
 
@@ -257,8 +257,9 @@ void InterleavedIOScheduler<T>::read_until_done() {
             // remove files after fully read
             _inputs.erase(_inputs.begin() + _read_head);
         }
+        uint64_t n_files = _inputs.size();
         // move virtual read head to next file
-        _read_head = (_inputs.size() == 0) ? 0 : (_read_head + 1) % std::min(_max_io_interleave, _inputs.size());
+        _read_head = (_inputs.size() == 0) ? 0 : (_read_head + 1) % std::min(_max_io_interleave, n_files);
 
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
@@ -341,6 +342,15 @@ void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line)
 template<typename T>
 void InterleavedIOScheduler<T>::flush() {
     write_buffer(_out_buff);
+}
+
+template<typename T>
+std::vector<std::string> InterleavedIOScheduler<T>::get_input_filenames() {
+    std::vector<std::string> out;
+    for (const auto &file : _inputs){
+        out.emplace_back(file.second);
+    }
+    return out;
 }
 
 template<typename T>

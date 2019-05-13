@@ -61,6 +61,51 @@ uint64_t double_hash(const std::pair<uint64_t, Read> &data) {
     return hash;
 }
 
+uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
+    auto payload = data.second;
+    uint64_t hash = 0b0;
+    switch (payload[1][0]) {
+        case 'A':
+            hash |= 0b00;
+        case 'C':
+            hash |= 0b01;
+        case 'T':
+            hash |= 0b10;
+        case 'G':
+            hash |= 0b11;
+        default:
+            hash |= 0b11;
+    }
+
+    switch (payload[1][1]) {
+        case 'A':
+            hash |= 0b0000;
+        case 'C':
+            hash |= 0b0100;
+        case 'T':
+            hash |= 0b1000;
+        case 'G':
+            hash |= 0b1100;
+        default:
+            hash |= 0b1100;
+    }
+
+    switch (payload[1][1]) {
+        case 'A':
+            hash |= 0b000000;
+        case 'C':
+            hash |= 0b010000;
+        case 'T':
+            hash |= 0b100000;
+        case 'G':
+            hash |= 0b110000;
+        default:
+            hash |= 0b110000;
+    }
+
+    return hash;
+}
+
 /*
  * Postprocessing functions
  */
@@ -114,6 +159,10 @@ void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::stri
         else if (hash_func == "double") {
             bb.set_hash_fn(double_hash);
             bb.set_table_width(16);
+        }
+        else if (hash_func == "triple") {
+            bb.set_hash_fn(double_hash);
+            bb.set_table_width(64);
         }
         // else keep default
     }

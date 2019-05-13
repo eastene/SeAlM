@@ -36,3 +36,5 @@ add_executable(test_aligner_cache test/test_main.cpp test/test_storage.cpp lib/s
 
 target_link_libraries(aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs)
 target_link_libraries(test_aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs Catch2)
+
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")
