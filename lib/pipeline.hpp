@@ -124,7 +124,7 @@ public:
     bool full() { return _io_subsystem.full(); }
 
     // TODO make this return actual size
-    uint64_t current_bucket_size() { return 50000; }
+    uint64_t current_bucket_size() { return 200000; }
 
     uint64_t compressed_size() { return _unique_entries.size(); }
 

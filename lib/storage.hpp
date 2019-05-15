@@ -23,6 +23,7 @@ private:
     uint64_t _max_bucket_size;
 
     // State variables
+    bool _sorted_buckets;
     uint64_t _num_full_buckets;
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
@@ -62,6 +63,8 @@ public:
      */
 
     bool insert(const T &data);
+
+    bool insert_sorted(const T &data);
 
     std::future<bool> insert_async(const T &data);
 
@@ -109,7 +112,10 @@ public:
     void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
 
     // TODO: add resize funtion that doesn't reinitialize all state
-    void set_table_width(uint64_t table_width) { _table_width = table_width; initialize(); }
+    void set_table_width(uint64_t table_width) {
+        _table_width = table_width;
+        initialize();
+    }
 
     /*
      * Operator Overloads
@@ -134,6 +140,7 @@ BufferedBuckets<T>::BufferedBuckets() {
     _max_buckets = 1;
     _table_width = 1;
     _max_bucket_size = 100000;
+    _sorted_buckets = true;
     _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
     initialize();
 }
@@ -143,7 +150,7 @@ BufferedBuckets<T>::BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_si
     _max_buckets = max_buckets;
     _table_width = 1;
     _max_bucket_size = max_bucket_size;
-
+    _sorted_buckets = (max_buckets == _table_width);
     _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
     initialize();
 }
@@ -202,8 +209,31 @@ bool BufferedBuckets<T>::insert(const T &data) {
 }
 
 template<typename T>
+bool BufferedBuckets<T>::insert_sorted(const T &data) {
+    uint64_t i = _hash_fn(data);
+    uint64_t j = 0;
+
+    // TODO implement as generic comparison
+    while (j < _buffers[i]->size() && (*_buffers[i])[j][1] < data[1]) {
+        j++;
+    }
+
+    _buffers[i]->insert(_buffers.begin() + j, data);
+
+    // bucketize buffer if full and buffer space available
+    if (_buffers[i]->size() >= _max_bucket_size) {
+        add_bucket(i);
+    }
+
+    return true;
+}
+
+template<typename T>
 std::future<bool> BufferedBuckets<T>::insert_async(const T &data) {
-    std::future<bool> future = std::async(std::launch::async, [&]() { return insert(data); });
+    std::future<bool> future = std::async(std::launch::async, [&]() {
+        if (_sorted_buckets) return insert_sorted(data);
+        else return insert(data);
+    });
     return future;
 }
 
@@ -264,6 +294,7 @@ BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &othe
     _max_buckets = other._max_buckets;
     _table_width = other._table_width;
     _max_bucket_size = other._max_bucket_size;
+    _sorted_buckets = other._sorted_buckets;
 
     // State variables
 //    _num_full_buckets = other._num_full_buckets;

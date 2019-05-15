@@ -13,6 +13,7 @@
 #include <experimental/filesystem>
 
 #include "storage.hpp"
+#include "logging.hpp"
 
 /*
  * IO EXCEPTIONS
@@ -61,7 +62,11 @@ private:
     std::chrono::milliseconds _max_wait_time;
 
     // Flags
+    std::atomic_bool _reading;
     std::atomic_bool _halt_flag;
+    std::atomic_bool _storage_full_flag;
+    std::atomic_bool _storage_empty_flag;
+    std::atomic_bool _async_fill_flag;
 
     // Automated file formatting variables
     std::string _input_pattern;
@@ -76,7 +81,9 @@ private:
 
     std::vector<T> parse_multi(uint64_t n); // reads multiple data points from a single file
 
-    void read_until_done();
+    void read_until_done(); // asynchronous continuous fill
+
+    void read_until_full(); // synchronous fill -> empty cycle
 
     void write_buffer(std::vector<std::pair<uint64_t, std::string>> _multiplexed_buff);
 
@@ -116,6 +123,8 @@ public:
      */
 
     std::vector<std::string> get_input_filenames();
+
+    void set_async_flag(bool flag){_async_fill_flag.store(flag);}
 
     void set_max_interleave(uint64_t max_interleave) { _max_io_interleave = max_interleave; }
 
@@ -169,10 +178,16 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
-    _halt_flag = false;
     _input_pattern = "";
     _auto_output_ext = "_out";
     _out_buff_threshold = 100000;
+
+    _halt_flag.store(false);
+    _async_fill_flag.store(true);
+    _storage_full_flag.store(false);
+    _storage_empty_flag.store(true);
+    _reading.store(false);
+
     _parsing_fn = std::function<T(std::ifstream &)>([](std::ifstream &fin) { return default_parser<T>(fin); });
 }
 
@@ -182,10 +197,16 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_patte
     _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
-    _halt_flag = false;
     _input_pattern = input_pattern;
     _auto_output_ext = "_out";
     _out_buff_threshold = 100000;
+
+    _halt_flag.store(false);
+    _async_fill_flag.store(true);
+    _storage_full_flag.store(false);
+    _storage_empty_flag.store(true);
+    _reading.store(false);
+
     _parsing_fn = parse_func;
 }
 
@@ -256,7 +277,43 @@ void InterleavedIOScheduler<T>::read_until_done() {
         } catch (IOResourceExhaustedException &iosee) {
             // remove files after fully read
             _inputs.erase(_inputs.begin() + _read_head);
+            _seek_poses.erase(_seek_poses.begin() + _read_head);
         }
+
+        uint64_t n_files = _inputs.size();
+        // move virtual read head to next file
+        _read_head = (_inputs.size() == 0) ? 0 : (_read_head + 1) % std::min(_max_io_interleave, n_files);
+
+        // once all files have been read, flush any data remaining in buffers to buckets
+        if (_inputs.empty()) {
+            _storage_subsystem.flush();
+            _halt_flag = true;
+            //throw IOResourceExhaustedException();
+        }
+    }
+}
+
+
+template<typename T>
+void InterleavedIOScheduler<T>::read_until_full() {
+    while (!_halt_flag) {
+        while(!_storage_empty_flag){};
+        log_info("Storage empty - " + std::to_string(_storage_subsystem.empty()) + " reading until full.");
+        // parse data point(s) in round robin fashion until all files exhausted
+        while(!_storage_subsystem.full() && !_inputs.empty()) {
+            try {
+                _storage_subsystem.insert(std::make_pair(_inputs[_read_head].first, parse_single()));
+            } catch (IOResourceExhaustedException &iosee) {
+                // remove files after fully read
+                _inputs.erase(_inputs.begin() + _read_head);
+                _seek_poses.erase(_seek_poses.begin() + _read_head);
+            }
+        }
+        log_info("Storage full - " + std::to_string(_storage_subsystem.full()));
+
+        _storage_full_flag.store(true);
+        _storage_empty_flag.store(false);
+
         uint64_t n_files = _inputs.size();
         // move virtual read head to next file
         _read_head = (_inputs.size() == 0) ? 0 : (_read_head + 1) % std::min(_max_io_interleave, n_files);
@@ -299,33 +356,50 @@ void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std
 template<typename T>
 bool InterleavedIOScheduler<T>::begin_reading() {
     // spawn reading daemon
-    std::thread([&]() { this->read_until_done(); }).detach();
-    return true;
+    if (!_reading) {
+        if (_async_fill_flag) {
+            std::thread([&]() { this->read_until_done(); }).detach();
+            _storage_full_flag.store(true);
+            _storage_empty_flag.store(false);
+        } else
+            std::thread([&]() { this->read_until_full(); }).detach();
+    }
+    _reading.store(true);
+    return _reading;
 }
 
 template<typename T>
 bool InterleavedIOScheduler<T>::stop_reading() {
     // stop reading daemon
     _halt_flag = true;
+    _reading = false;
     return true;
 }
 
 template<typename T>
 std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket() {
     // request a bucket sequentially
-    if (!_storage_subsystem.empty() || !_inputs.empty()) {
+    while(!_storage_full_flag){}; // only necessary if using fill->empty model
+
+    if (!_storage_subsystem.empty() || (_async_fill_flag && !_inputs.empty())) { // only wait for buckets to fill if async
         return _storage_subsystem.next_bucket();
     } else {
-        throw RequestToEmptyStorageException();
+        _storage_empty_flag.store(true);
+        _storage_full_flag.store(false);
+        //TODO: use this exception somehow
+        //throw RequestToEmptyStorageException();
     }
 }
 
 template<typename T>
 std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::request_bucket_async() {
-    if (!_storage_subsystem.empty() || !_inputs.empty()) {
+    while(!_storage_full_flag){};
+    if (!_storage_subsystem.empty() || (_async_fill_flag && !_inputs.empty())) { // only wait for buckets to fill if async
         return std::move(_storage_subsystem.next_bucket_async());
     } else {
-        throw RequestToEmptyStorageException();
+        _storage_empty_flag.store(true);
+        _storage_full_flag.store(false);
+        //throw RequestToEmptyStorageException();
     }
 }
 
@@ -372,6 +446,10 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
 
     // Flags
     _halt_flag.store(other._halt_flag.load());
+    _async_fill_flag.store(other._async_fill_flag);
+    _storage_full_flag.store(other._storage_full_flag);
+    _storage_empty_flag.store(other._storage_empty_flag);
+    _reading.store(other._reading);
 
     // Automated file formatting variables
     _input_pattern = other._input_pattern;

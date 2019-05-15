@@ -173,6 +173,9 @@ void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::stri
      * I/O Parameters
      */
 
+    if (cfp.contains("async_io"))
+        io.set_async_flag(cfp.get_bool_val("async_io"));
+
     if (cfp.contains("max_interleave"))
         io.set_max_interleave(cfp.get_long_val("max_interleave"));
 
