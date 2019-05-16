@@ -37,6 +37,7 @@ template<typename T, typename K, typename V>
 class BucketedPipelineManager {
 protected:
     // IO variables
+    //TODO: change to unique pointer (?)
     InterleavedIOScheduler<T> _io_subsystem;
 
     // Global cache variables
@@ -52,6 +53,7 @@ protected:
     std::queue<std::unique_ptr<std::vector<T> > > _bucket_buffer;
     std::queue<std::unique_ptr<std::vector<std::pair<uint64_t, uint64_t> > > > _multiplexer_buffer;
     std::queue<std::unique_ptr<std::queue<V> > > _cached_values;
+    std::queue<uint64_t> _prev_bucket_sizes;
 
     // Compression variables
     CompressionLevel _compression_level;
@@ -107,7 +109,7 @@ public:
 
     void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
 
-    void set_cache_subsystem(InMemCache<K, V> &other) { _cache_subsystem = std::make_unique<LRUCache<K, V> >(); }
+    void set_cache_subsystem(std::unique_ptr<InMemCache<K, V> > &other) { _cache_subsystem = std::move(other); }
 
     void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = other; }
 
@@ -124,7 +126,14 @@ public:
     bool full() { return _io_subsystem.full(); }
 
     // TODO make this return actual size
-    uint64_t current_bucket_size() { return 200000; }
+    uint64_t current_bucket_size() {
+        uint64_t tmp = 0;
+        if (!_prev_bucket_sizes.empty()) {
+            tmp = _prev_bucket_sizes.front();
+            _prev_bucket_sizes.pop();
+        }
+        return tmp;
+    }
 
     uint64_t compressed_size() { return _unique_entries.size(); }
 
@@ -327,6 +336,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     _bucket_buffer.push(std::move(temp_bucket));
     _multiplexer_buffer.push(std::move(temp_multiplexer));
     _cached_values.push(std::move(temp_cache_hits));
+    _prev_bucket_sizes.push(next_bucket->size());
 
     // return only the unique entries given the compression level
     return unique_entries;

@@ -147,7 +147,6 @@ void WrappedMapper::run_alignment() {
 
             auto write_future = _pipe.write_async(alignments);
 
-
             // update state
             _align_calls++;
             _reads_aligned += alignments.size();

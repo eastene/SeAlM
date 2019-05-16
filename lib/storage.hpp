@@ -14,21 +14,37 @@
 #include <iostream>
 #include <algorithm>
 
+/*
+ * Storage Specific Exceptions
+ */
+
+class BadChainPushException : public std::exception {
+};
+
+
+/*
+ * ORDERED SEQUENCE STORAGE
+ *
+ * Base class of types that implement storage for
+ * sequence data that require an imposed ordering
+ *
+ */
+
+// T - sequence Type (string, vector, etc.)
 template<typename T>
-class BufferedBuckets {
-private:
+class OrderedSequenceStorage {
+protected:
     // Sizing limits
     uint64_t _max_buckets;
     uint64_t _table_width;
     uint64_t _max_bucket_size;
+    uint64_t _max_chain_len;
 
     // State variables
-    bool _sorted_buckets;
     uint64_t _num_full_buckets;
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
     uint64_t _current_chain;
-    typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
 
     // Atomic variables
     bool _alive;
@@ -36,51 +52,63 @@ private:
     // Locks for thread safety
     std::mutex _bucket_mutex;
 
-    // Data structures
-    std::vector<std::list<std::unique_ptr<std::vector<T> > > > _buckets; // full buckets
-    std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
-
     // Functors
     std::function<uint64_t(const T &)> _hash_fn;
+    std::function<bool(const T &, const T &)> _value_ordering;
 
-    // Private methods
-    void initialize();
+    // Protected methods
+    virtual void initialize() = 0;
 
-    void add_bucket(uint64_t from_buffer);
+    virtual void add_bucket(uint64_t from_buffer) = 0;
 
 public:
 
     /*
-     *  Constructors
+     * Constructors
      */
+    OrderedSequenceStorage() {
+        _max_chain_len = std::numeric_limits<uint64_t>::max();
+        _num_full_buckets = 0;
+        _size = 0;
+        _current_chain = 0;
+        _alive = true;
 
-    BufferedBuckets();
-
-    BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_size);
+        _max_buckets = 1;
+        _table_width = 1;
+        _max_bucket_size = 100000;
+        _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return 0; });
+        this->_value_ordering = std::function<bool(const T &, const T &)>([](const T &a, const T &b) { return a < b; });
+    }
 
     /*
      * Consumption Methods
      */
 
-    bool insert(const T &data);
+    virtual bool insert(const T &data) = 0;
 
-    bool insert_sorted(const T &data);
-
-    std::future<bool> insert_async(const T &data);
+    std::future<bool> insert_async(const T &data) {
+        return std::async(std::launch::async, [&]() {
+            return insert(data);
+        });
+    }
 
     /*
      * Production Methods
      */
 
-    std::unique_ptr<std::vector<T>> next_bucket();
+    virtual std::unique_ptr<std::vector<T>> next_bucket() = 0;
 
-    std::future<std::unique_ptr<std::vector<T> > > next_bucket_async();
+    std::future<std::unique_ptr<std::vector<T> > > next_bucket_async() {
+        return std::async(std::launch::async, [&]() {
+            return std::move(next_bucket());
+        });
+    }
 
     /*
      * Forcing Methods
      */
 
-    void flush();
+    virtual void flush() = 0;
 
     void kill() { _alive = false; } // stop all read/writes pending if in deadlock, puts store in unsafe state
 
@@ -111,7 +139,9 @@ public:
 
     void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
 
-    // TODO: add resize funtion that doesn't reinitialize all state
+    void set_ordering(std::function<uint64_t(const T &, const T &)> fn) { this->_value_ordering = fn; }
+
+    // TODO: add resize function that doesn't reinitialize all state
     void set_table_width(uint64_t table_width) {
         _table_width = table_width;
         initialize();
@@ -120,74 +150,121 @@ public:
     /*
      * Operator Overloads
      */
-    BufferedBuckets &operator=(const BufferedBuckets &other);
+    OrderedSequenceStorage &operator=(const OrderedSequenceStorage &other) {
+        // Sizing limits
+        _max_buckets = other._max_buckets;
+        _table_width = other._table_width;
+        _max_bucket_size = other._max_bucket_size;
+        _max_chain_len = other._max_chain_len;
+
+        // State variables
+        _num_full_buckets = other._num_full_buckets;
+        _size = other._size;
+        for (int i = 0; i < _chain_lengths.size(); i++) {
+            _chain_lengths[i] = other._chain_lengths[i];
+        }
+        _current_chain = other._current_chain;
+
+        // Atomic variables
+        _alive = other._alive;
+
+        // Functors
+        _hash_fn = other._hash_fn;
+        _value_ordering = other._value_ordering;
+    }
 };
 
+
 /*
- * Functors
+ *
+ * BUFFERED BUCKETS
+ *
+ * Bucketed storage for asynchronous I/O of hashed data
+ * that is accessed in chains of similar buckets.
+ *
  */
 
 template<typename T>
-uint64_t default_hash(T &data) {
-    return 0; // does nothing
-}
+class BufferedBuckets : public OrderedSequenceStorage<T> {
+protected:
+    typename std::list<std::unique_ptr<std::vector<T> > >::iterator _next_bucket_itr;
+
+    // Data structures
+    std::vector<std::list<std::unique_ptr<std::vector<T> > > > _buckets; // full buckets
+    std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
+
+    // Private methods
+    void initialize() override;
+
+    void add_bucket(uint64_t from_buffer) override;
+
+public:
+
+    BufferedBuckets() : OrderedSequenceStorage<T>() { initialize(); };
+
+    /*
+     * Consumption Methods
+     */
+
+    virtual bool insert(const T &data);
+
+    /*
+     * Production Methods
+     */
+
+    virtual std::unique_ptr<std::vector<T>> next_bucket();
+
+    /*
+     * Forcing Methods
+     */
+
+    virtual void flush();
+
+    /*
+     * Operator Overloads
+     */
+    BufferedBuckets &operator=(const BufferedBuckets &other);
+};
+
 
 /*
  *  Method Implementations
  */
-template<typename T>
-BufferedBuckets<T>::BufferedBuckets() {
-    _max_buckets = 1;
-    _table_width = 1;
-    _max_bucket_size = 100000;
-    _sorted_buckets = true;
-    _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
-    initialize();
-}
-
-template<typename T>
-BufferedBuckets<T>::BufferedBuckets(uint64_t max_buckets, uint64_t max_bucket_size) {
-    _max_buckets = max_buckets;
-    _table_width = 1;
-    _max_bucket_size = max_bucket_size;
-    _sorted_buckets = (max_buckets == _table_width);
-    _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return default_hash(data); });
-    initialize();
-}
 
 template<typename T>
 void BufferedBuckets<T>::initialize() {
-    _size = 0;
-    _num_full_buckets = 0;
-    _buckets.resize(_table_width);
-    _buffers.resize(_table_width);
-    _chain_lengths.resize(_table_width);
-    for (uint16_t i = 0; i < _table_width; i++) {
+    this->_size = 0;
+    this->_num_full_buckets = 0;
+    _buckets.resize(this->_table_width);
+    _buffers.resize(this->_table_width);
+    this->_chain_lengths.resize(this->_table_width);
+    for (uint16_t i = 0; i < this->_table_width; i++) {
         _buffers[i] = std::make_unique<std::vector<T>>();
-        _chain_lengths[i] = 0;
+        this->_chain_lengths[i] = 0;
     }
-    _current_chain = 0;
+    this->_current_chain = 0;
     _next_bucket_itr = _buckets[0].end();
-    _alive = true;
+    this->_alive = true;
 }
 
 template<typename T>
 void BufferedBuckets<T>::add_bucket(uint64_t from_buffer) {
-    while (full() && _alive);
-    if (_alive) {
+    while (this->full() && this->_alive);
+
+    if (this->_alive) {
         // acquire lock on bucket structure
-        std::lock_guard<std::mutex> lock(_bucket_mutex);
+        std::lock_guard<std::mutex> lock(this->_bucket_mutex);
         // add buffer data to new bucket and reset buffer
         _buckets[from_buffer].emplace_back(std::move(_buffers[from_buffer]));
         _buffers[from_buffer] = std::make_unique<std::vector<T>>();
         // if this is the first bucket in empty structure, point next bucket to it
         if (_next_bucket_itr == _buckets[0].end()) {
-            _current_chain = from_buffer;
-            _next_bucket_itr = _buckets[_current_chain].begin();
+            this->_current_chain = from_buffer;
+            _next_bucket_itr = _buckets[this->_current_chain].begin();
         }
         // adjust state after bucket production
-        _chain_lengths[from_buffer]++;
-        _num_full_buckets++;
+        this->_chain_lengths[from_buffer]++;
+        this->_num_full_buckets++;
     } else {
         //TODO: throw exception (?), perform any cleanup
     }
@@ -197,85 +274,62 @@ template<typename T>
 bool BufferedBuckets<T>::insert(const T &data) {
     // find buffer for data and add
     //TODO: resize table if i goes beyond bounds
-    uint64_t i = _hash_fn(data);
+    uint64_t i = this->_hash_fn(data);
     _buffers[i]->emplace_back(data);
-    _size++;
+    this->_size++;
     // bucketize buffer if full and buffer space available
-    if (_buffers[i]->size() >= _max_bucket_size) {
+    if (_buffers[i]->size() >= this->_max_bucket_size) {
         add_bucket(i);
     }
 
     return true;
-}
-
-template<typename T>
-bool BufferedBuckets<T>::insert_sorted(const T &data) {
-    uint64_t i = _hash_fn(data);
-    uint64_t j = 0;
-
-    // TODO implement as generic comparison
-    while (j < _buffers[i]->size() && (*_buffers[i])[j][1] < data[1]) {
-        j++;
-    }
-
-    _buffers[i]->insert(_buffers.begin() + j, data);
-
-    // bucketize buffer if full and buffer space available
-    if (_buffers[i]->size() >= _max_bucket_size) {
-        add_bucket(i);
-    }
-
-    return true;
-}
-
-template<typename T>
-std::future<bool> BufferedBuckets<T>::insert_async(const T &data) {
-    std::future<bool> future = std::async(std::launch::async, [&]() {
-        if (_sorted_buckets) return insert_sorted(data);
-        else return insert(data);
-    });
-    return future;
 }
 
 template<typename T>
 void BufferedBuckets<T>::flush() {
-    std::lock_guard<std::mutex> lock(_bucket_mutex);
+    std::lock_guard<std::mutex> lock(this->_bucket_mutex);
     for (uint64_t i = 0; i < _buffers.size(); i++) {
         if (!_buffers[i]->empty()) {
             _buckets[i].emplace_back(std::move(_buffers[i]));
             _buffers[i] = std::make_unique<std::vector<T>>();
-            _num_full_buckets++;
-            _chain_lengths[i]++;
+            this->_num_full_buckets++;
+            this->_chain_lengths[i]++;
         }
     }
 }
 
 template<typename T>
 std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
-    while (_num_full_buckets <= 0 && _alive);
-    if (_alive) {
+    while (this->_num_full_buckets <= 0 && this->_alive);
+    if (this->_alive) {
         // acquire lock on bucket structure
-        std::lock_guard<std::mutex> lock(_bucket_mutex);
+        std::lock_guard<std::mutex> lock(this->_bucket_mutex);
         // retrieve next bucket and remove from chain
-        std::unique_ptr<std::vector<T>> out = std::move(_buckets[_current_chain].front());
-        _buckets[_current_chain].pop_front();
+        std::unique_ptr<std::vector<T>> out = std::move(_buckets[this->_current_chain].front());
+        _buckets[this->_current_chain].pop_front();
         // consume chains until empty, then move to next chain, chosen as longest chain
-        _chain_lengths[_current_chain]--;
-        if (_buckets[_current_chain].empty()) {
+        this->_chain_lengths[this->_current_chain]--;
+        if (_buckets[this->_current_chain].empty()) {
             std::cout << "Switching chains." << std::endl;
             uint16_t max_elem = 0;
-            for (uint32_t i = 0; i < _chain_lengths.size(); i++) {
-                if (_chain_lengths[i] > max_elem) {
-                    max_elem = _chain_lengths[i];
-                    _current_chain = i;
+            for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
+                if (this->_chain_lengths[i] > max_elem) {
+                    max_elem = this->_chain_lengths[i];
+                    this->_current_chain = i;
                 }
             }
         }
         // point to next bucket for consumption
-        _next_bucket_itr = _buckets[_current_chain].begin();
+        if (_buckets[this->_current_chain].empty()) {
+            // empty structure
+            _next_bucket_itr = _buckets[0].end();
+        } else {
+            // some next bucket exists
+            _next_bucket_itr = _buckets[this->_current_chain].begin();
+        }
         // adjust state after consumption
-        _size -= out->size();
-        _num_full_buckets--;
+        this->_size -= out->size();
+        this->_num_full_buckets--;
         return std::move(out);
     } else {
         return nullptr;
@@ -283,56 +337,196 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
 }
 
 template<typename T>
-std::future<std::unique_ptr<std::vector<T> > >
-BufferedBuckets<T>::next_bucket_async() {
-    return std::async(std::launch::async, [&]() { return std::move(next_bucket()); });
-}
-
-template<typename T>
 BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &other) {
     // Sizing limits
-    _max_buckets = other._max_buckets;
-    _table_width = other._table_width;
-    _max_bucket_size = other._max_bucket_size;
-    _sorted_buckets = other._sorted_buckets;
-
-    // State variables
-//    _num_full_buckets = other._num_full_buckets;
-//    _size = other._size;
-//    _chain_lengths = other._chain_lengths;
-//    _current_chain = other._current_chain;
-//
-//    _next_bucket_itr = other._next_bucket_itr;
-//
-//    // Atomic variables
-//    _alive = other._alive;
+    this->_max_buckets = other._max_buckets;
+    this->_table_width = other._table_width;
+    this->_max_bucket_size = other._max_bucket_size;
 
     initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
 
-    // Locks for thread safety
-//    if (!other._bucket_mutex.try_lock()) {
-//        _bucket_mutex.lock();
-//    } else {
-//        other._bucket_mutex.unlock();
-//        _bucket_mutex.unlock();
-//    }
-
-
-    // Data structures
-//    _buckets.resize(other._buckets.size());
-//    for (uint64_t i = 0; i < other._buckets.size(); i++) {
-//        for (uint64_t j = 0; j < other._buckets[i].size(); j++){
-//            _buckets[i].emplace_back(std::move(other._buckets[i][j]));
-//        }
-//    }
-//    _buffers.resize(other._buffers.size());
-//    for (uint64_t i = 0; i < other._buffers.size(); i++) {
-//        _buffers[i] = std::move(other._buffers[i]);
-//    }
-
     // Functors
-    _hash_fn = other._hash_fn;
+    this->_hash_fn = other._hash_fn;
 }
 
+/*
+ *
+ * BUFFERED SORTED CHAIN
+ *
+ * Similar to BUFFERED BUCKETS, but has only a single bucket per chain
+ * that is in sorted order. Chains are of varying sizes only bounded by some
+ * maximum size
+ *
+ */
+
+template<typename T>
+class BufferedSortedChain : public OrderedSequenceStorage<T> {
+protected:
+    // State variables
+    uint64_t _next_chain;
+
+    // Data structures
+    std::vector<std::unique_ptr<std::vector<T> > > _sorted_chain; // full, sorted chains
+    std::vector<std::unique_ptr<std::vector<T> > > _buffers; // partially filled buckets
+
+    // Protected Methods
+    void initialize() override;
+
+    void add_bucket(uint64_t from_buffer) override;
+
+public:
+    BufferedSortedChain() : OrderedSequenceStorage<T>() { initialize(); };
+
+    bool insert(const T &data) override;
+
+    std::unique_ptr<std::vector<T>> next_bucket() override;
+
+    void flush() override;
+
+    /*
+     * Operator Overloads
+     */
+    BufferedSortedChain &operator=(const BufferedSortedChain &other);
+};
+
+template<typename T>
+void BufferedSortedChain<T>::initialize() {
+    this->_size = 0;
+    this->_num_full_buckets = 0;
+    _sorted_chain.resize(this->_table_width);
+    this->_buffers.resize(this->_table_width);
+    this->_chain_lengths.resize(this->_table_width);
+    for (uint16_t i = 0; i < this->_table_width; i++) {
+        this->_buffers[i] = std::make_unique<std::vector<T>>();
+        this->_chain_lengths[i] = 0;
+    }
+    this->_current_chain = 0;
+
+    this->_alive = true;
+    this->_max_chain_len = 1;
+    _next_chain == std::numeric_limits<uint64_t>::max();
+}
+
+template<typename T>
+void BufferedSortedChain<T>::add_bucket(uint64_t from_buffer) {
+    while (this->full() && this->_alive);
+
+    if (this->_chain_lengths[from_buffer] >= this->_max_chain_len) {
+        throw BadChainPushException();
+    }
+
+    if (this->_alive) {
+        // acquire lock on bucket structure
+        std::lock_guard<std::mutex> lock(this->_bucket_mutex);
+        // add buffer data to new bucket and reset buffer
+        _sorted_chain[from_buffer] = std::move(this->_buffers[from_buffer]);
+        this->_buffers[from_buffer] = std::make_unique<std::vector<T>>();
+
+        // sort each bucket in place as it is added
+        std::sort(_sorted_chain[from_buffer]->begin(), _sorted_chain[from_buffer]->end(), this->_value_ordering);
+
+        // if this is the first bucket in empty structure, point next bucket to it
+        if (_next_chain == std::numeric_limits<uint64_t>::max()) {
+            this->_current_chain = from_buffer;
+            _next_chain = from_buffer;
+        }
+        // adjust state after bucket production
+        this->_chain_lengths[from_buffer]++;
+        this->_num_full_buckets++;
+    } else {
+        //TODO: throw exception (?), perform any cleanup
+    }
+}
+
+template<typename T>
+bool BufferedSortedChain<T>::insert(const T &data) {
+    // find buffer for data and add
+    //TODO: resize table if i goes beyond bounds
+    uint64_t i = this->_hash_fn(data);
+    this->_buffers[i]->emplace_back(data);
+    this->_size++;
+    // bucketize buffer if full and buffer space available
+    if (this->_buffers[i]->size() >= this->_max_bucket_size) {
+        try {
+            add_bucket(i);
+        } catch (BadChainPushException &bcpe) {
+            flush();
+        }
+    }
+
+    return true;
+}
+
+template<typename T>
+std::unique_ptr<std::vector<T>> BufferedSortedChain<T>::next_bucket() {
+    while (this->_num_full_buckets <= 0 && this->_alive);
+    if (this->_alive) {
+        // acquire lock on bucket structure
+        std::lock_guard<std::mutex> lock(this->_bucket_mutex);
+        // retrieve next bucket and remove from chain
+        std::unique_ptr<std::vector<T>> out = std::move(_sorted_chain[this->_current_chain]);
+        _sorted_chain[this->_current_chain] = std::make_unique<std::vector<T> >();
+        // consume chains until empty, then move to next chain, chosen as longest chain
+        this->_chain_lengths[this->_current_chain]--;
+        if (_sorted_chain[this->_current_chain]->empty()) {
+            uint16_t max_elem = 0;
+            for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
+                if (this->_chain_lengths[i] > max_elem) {
+                    max_elem = this->_chain_lengths[i];
+                    this->_current_chain = i;
+                }
+            }
+        }
+        // point to next bucket for consumption
+        if (_sorted_chain[this->_current_chain]->empty()) {
+            // empty structure
+            _next_chain = std::numeric_limits<uint64_t>::max();
+        } else {
+            // some next bucket exists
+            _next_chain = this->_current_chain;
+        }
+        // adjust state after consumption
+        this->_size -= out->size();
+        this->_num_full_buckets--;
+        return std::move(out);
+    } else {
+        return nullptr;
+    }
+}
+
+template<typename T>
+void BufferedSortedChain<T>::flush() {
+    std::lock_guard<std::mutex> lock(this->_bucket_mutex);
+    for (uint64_t i = 0; i < this->_buffers.size(); i++) {
+        if (!this->_buffers[i]->empty()) {
+            if (!_sorted_chain[i] || _sorted_chain[i]->empty()) {
+                _sorted_chain[i] = std::move(this->_buffers[i]);
+                this->_num_full_buckets++;
+            } else {
+                //this->_buckets[i][0]->reserve(this->_buckets[i][0]->size() + this->_buffers[i]->size());
+                _sorted_chain[i]->insert(_sorted_chain[i]->begin() + _sorted_chain[i]->size(), this->_buffers[i]->begin(),
+                                         this->_buffers[i]->end());
+                std::sort(_sorted_chain[i]->begin(), _sorted_chain[i]->end(), this->_value_ordering);
+            }
+            this->_buffers[i] = std::make_unique<std::vector<T>>();
+            this->_chain_lengths[i] = 1;
+        }
+    }
+}
+
+template<typename T>
+BufferedSortedChain<T> &BufferedSortedChain<T>::operator=(const BufferedSortedChain<T> &other) {
+    // Sizing limits
+    this->_max_buckets = other._max_buckets;
+    this->_table_width = other._table_width;
+    this->_max_bucket_size = other._max_bucket_size;
+    this->_max_chain_len = other._max_chain_len;
+
+    this->initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
+
+    // Functors
+    this->_hash_fn = other._hash_fn;
+    this->_value_ordering = other._value_ordering;
+}
 
 #endif //ALIGNER_CACHE_STORAGE_HPP

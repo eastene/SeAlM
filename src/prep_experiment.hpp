@@ -133,36 +133,49 @@ std::string seq_extraction_fn(Read &data) {
     return data[1];
 }
 
+/*
+ * Ordering Functions
+ */
+bool seq_ordering(const std::pair<uint64_t, Read> &a, const std::pair<uint64_t, Read> &b) {
+    return a.second[1] < b.second[1];
+}
+
+
 // Configure the data pipeline appropriately according to the config file
 
 // T-dataType, K-cacheKey, V-cacheValue
-void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::string, std::string> *pipe) {
-    BufferedBuckets<std::pair<uint64_t, Read> > bb;
+void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
+    std::unique_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
     InterleavedIOScheduler<Read> io;
 
     /*
      * Storage Parameters
      */
 
+    if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
+        bb = std::make_unique<BufferedSortedChain<std::pair<uint64_t, Read> > >();
+        bb->set_ordering(seq_ordering);
+    } else {
+        bb = std::make_unique<BufferedBuckets<std::pair<uint64_t, Read> > >();
+    }
+
     if (cfp.contains("num_buckets"))
-        bb.set_num_buckets(cfp.get_long_val("num_buckets"));
+        bb->set_num_buckets(cfp.get_long_val("num_buckets"));
 
     if (cfp.contains("bucket_size"))
-        bb.set_bucket_size(cfp.get_long_val("bucket_size"));
+        bb->set_bucket_size(cfp.get_long_val("bucket_size"));
 
     if (cfp.contains("hash_func")) {
         std::string hash_func = cfp.get_val("hash_func");
         if (hash_func == "single") {
-            bb.set_hash_fn(single_hash);
-            bb.set_table_width(4);
-        }
-        else if (hash_func == "double") {
-            bb.set_hash_fn(double_hash);
-            bb.set_table_width(16);
-        }
-        else if (hash_func == "triple") {
-            bb.set_hash_fn(double_hash);
-            bb.set_table_width(64);
+            bb->set_hash_fn(single_hash);
+            bb->set_table_width(4);
+        } else if (hash_func == "double") {
+            bb->set_hash_fn(double_hash);
+            bb->set_table_width(16);
+        } else if (hash_func == "triple") {
+            bb->set_hash_fn(double_hash);
+            bb->set_table_width(64);
         }
         // else keep default
     }
@@ -194,9 +207,9 @@ void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::stri
      * Pipeline Parameters
      */
 
-    if (cfp.contains("compression")){
+    if (cfp.contains("compression")) {
         std::string cmp = cfp.get_val("compression");
-        if (cmp == "full"){
+        if (cmp == "full") {
             pipe->set_compression_level(FULL);
         } else if (cmp == "cross") {
             pipe->set_compression_level(CROSS);
@@ -206,12 +219,13 @@ void prep_experiment(ConfigParser &cfp,  BucketedPipelineManager<Read, std::stri
     }
 
     if (cfp.contains("cache")) {
+        std::unique_ptr<InMemCache<std::string, std::string> > c;
         std::string cache = cfp.get_val("cache");
         if (cache == "lru") {
-            LRUCache<std::string, std::string> c;
+            c = std::make_unique<LRUCache<std::string, std::string> >();
             pipe->set_cache_subsystem(c);
         } else if (cache == "mru") {
-            MRUCache<std::string, std::string> c;
+            c = std::make_unique<MRUCache<std::string, std::string> >();
             pipe->set_cache_subsystem(c);
         }
     }
