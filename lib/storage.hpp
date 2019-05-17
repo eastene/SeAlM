@@ -13,6 +13,7 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include "logging.hpp"
 
 /*
  * Storage Specific Exceptions
@@ -289,6 +290,7 @@ bool BufferedBuckets<T>::insert(const T &data) {
 
 template<typename T>
 void BufferedBuckets<T>::flush() {
+    log_debug("Flushing buffers.");
     std::lock_guard<std::mutex> lock(this->_bucket_mutex);
     for (uint64_t i = 0; i < _buffers.size(); i++) {
         if (!_buffers[i]->empty()) {
@@ -312,7 +314,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         // consume chains until empty, then move to next chain, chosen as longest chain
         this->_chain_lengths[this->_current_chain]--;
         if (_buckets[this->_current_chain].empty()) {
-            std::cout << "Switching chains." << std::endl;
+            log_info("Switching chains.");
             uint16_t max_elem = 0;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
                 if (this->_chain_lengths[i] > max_elem) {
@@ -323,7 +325,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         }
         // point to next bucket for consumption
         if (_buckets[this->_current_chain].empty()) {
-            // empty structure
+            // empty structure, set next bucket to sentinel value
             _next_bucket_itr = _buckets[0].end();
         } else {
             // some next bucket exists

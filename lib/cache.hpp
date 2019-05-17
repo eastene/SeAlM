@@ -138,6 +138,10 @@ private:
 
 public:
     MRUCache() : LRUCache<K, V>() {};
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
 };
 
 
@@ -268,6 +272,28 @@ void MRUCache<K, V>::evict() {
     this->_order.pop_front();
     this->_order_lookup.erase(key);
     this->_cache.erase(key);
+}
+
+template<typename K, typename V>
+void MRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    if (this->_cache.find(key) == this->_cache.end()) {
+        this->_order.emplace_front(key);
+        this->_order_lookup.emplace(key, this->_order.begin());
+        this->_cache.emplace(key, value);
+
+        // only change recency of read on access, not on addition
+        this->_keys++;
+    }
+
+}
+
+template<typename K, typename V>
+void MRUCache<K, V>::trim() {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    for (uint64_t i = this->_cache.size(); i >= this->_max_cache_size; i--) {
+        this->evict();
+    }
 }
 
 #endif //ALIGNER_CACHE_CACHE_HPP
