@@ -45,6 +45,7 @@ protected:
     uint64_t _size;
     std::vector<uint16_t> _chain_lengths;
     uint64_t _current_chain;
+    bool _flushed;
 
     // Atomic variables
     bool _alive;
@@ -72,12 +73,13 @@ public:
         _size = 0;
         _current_chain = 0;
         _alive = true;
+        _flushed = false;
 
         _max_buckets = 1;
         _table_width = 1;
         _max_bucket_size = 100000;
         _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return 0; });
-        this->_value_ordering = std::function<bool(const T &, const T &)>([](const T &a, const T &b) { return a < b; });
+        _value_ordering = std::function<bool(const T &, const T &)>([](const T &a, const T &b) { return a < b; });
     }
 
     /*
@@ -404,7 +406,7 @@ void BufferedSortedChain<T>::initialize() {
 
     this->_alive = true;
     this->_max_chain_len = 1;
-    _next_chain == std::numeric_limits<uint64_t>::max();
+    _next_chain = std::numeric_limits<uint64_t>::max();
 }
 
 template<typename T>
@@ -499,12 +501,14 @@ void BufferedSortedChain<T>::flush() {
     std::lock_guard<std::mutex> lock(this->_bucket_mutex);
     for (uint64_t i = 0; i < this->_buffers.size(); i++) {
         if (!this->_buffers[i]->empty()) {
+            // TODO add way of handling empty buffers without adding empty buckets
             if (!_sorted_chain[i] || _sorted_chain[i]->empty()) {
                 _sorted_chain[i] = std::move(this->_buffers[i]);
                 this->_num_full_buckets++;
             } else {
                 //this->_buckets[i][0]->reserve(this->_buckets[i][0]->size() + this->_buffers[i]->size());
-                _sorted_chain[i]->insert(_sorted_chain[i]->begin() + _sorted_chain[i]->size(), this->_buffers[i]->begin(),
+                _sorted_chain[i]->insert(_sorted_chain[i]->begin() + _sorted_chain[i]->size(),
+                                         this->_buffers[i]->begin(),
                                          this->_buffers[i]->end());
                 std::sort(_sorted_chain[i]->begin(), _sorted_chain[i]->end(), this->_value_ordering);
             }

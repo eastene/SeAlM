@@ -167,7 +167,11 @@ void WrappedMapper::run_alignment() {
             std::cout << "----------------------------" << std::endl;
             write_future.wait();
         }
-    } catch (RequestToEmptyStorageException &rtese) {}
+    } catch (RequestToEmptyStorageException &rtese) {
+        _reads_aligned += alignments.size();
+        auto write_future = _pipe.write_async(alignments);
+        write_future.wait();
+    }
 
     // stop reading (in case of exception above) and flush output buffer
     _pipe.close();

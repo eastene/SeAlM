@@ -300,7 +300,7 @@ template<typename T>
 void InterleavedIOScheduler<T>::read_until_full() {
     while (!_halt_flag) {
         while (!_storage_empty_flag) {};
-        log_info("Storage empty - " + std::to_string(_storage_subsystem->empty()) + " reading until full.");
+        log_info("Storage empty - reading until full.");
         // parse data point(s) in round robin fashion until all files exhausted
         while (!_storage_subsystem->full() && !_inputs.empty()) {
             try {
@@ -311,7 +311,7 @@ void InterleavedIOScheduler<T>::read_until_full() {
                 _seek_poses.erase(_seek_poses.begin() + _read_head);
             }
         }
-        log_info("Storage full - " + std::to_string(_storage_subsystem->full()));
+        log_info("Storage full - requests enabled.");
 
         _storage_full_flag.store(true);
         _storage_empty_flag.store(false);
@@ -392,11 +392,12 @@ std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>
         if (!_storage_subsystem->empty()) {
             return _storage_subsystem->next_bucket();
         } else {
-            _storage_empty_flag.store(true);
-            _storage_full_flag.store(false);
-            while (!_storage_full_flag) {}; // wait until full if empty
-
             if (!_storage_subsystem->empty() || !_inputs.empty()) {
+                _storage_empty_flag.store(true);
+                _storage_full_flag.store(false);
+
+                while (!_storage_full_flag) {}; // wait until full if empty
+
                 return _storage_subsystem->next_bucket();
             } else {
                 throw RequestToEmptyStorageException();

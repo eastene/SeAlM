@@ -126,9 +126,9 @@ public:
         if (_configs.find(key) != _configs.end()) {
             std::string val = _configs[key];
             std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-            if (val == "true")
+            if (val == "true" || val == "1" || val == "yes")
                 return true;
-            else if (val == "false")
+            else if (val == "false" || val == "0" || val == "no")
                 return false;
             else
                 throw InvalidConversionException();

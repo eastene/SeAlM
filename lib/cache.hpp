@@ -133,7 +133,11 @@ public:
 
 template<typename K, typename V>
 class MRUCache : public LRUCache<K, V> {
+private:
     void evict() override;
+
+public:
+    MRUCache() : LRUCache<K, V>() {};
 };
 
 
@@ -257,6 +261,7 @@ V &LRUCache<K, V>::operator[](K &key) {
 /*
  * MRU CACHE
  */
+
 template<typename K, typename V>
 void MRUCache<K, V>::evict() {
     std::string key = this->_order.front();
