@@ -74,25 +74,20 @@ uint64_t double_hash(const std::pair<uint64_t, Read> &data) {
 uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
     auto payload = data.second;
     uint64_t hash = 0b0;
-    switch (payload[1][2]) {
+    uint64_t s = payload[1].size();
+    switch (payload[1][s-3]) {
         case 'A':
+        case 'C':
             hash |= 0b00;
             break;
-        case 'C':
-            hash |= 0b01;
-            break;
         case 'T':
-            hash |= 0b10;
-            break;
         case 'G':
-            hash |= 0b11;
-            break;
         default:
             hash |= 0b11;
             break;
     }
 
-    switch (payload[1][1]) {
+    switch (payload[1][s-2]) {
         case 'A':
             hash |= 0b0000;
             break;
@@ -110,7 +105,7 @@ uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
             break;
     }
 
-    switch (payload[1][0]) {
+    switch (payload[1][s-1]) {
         case 'A':
             hash |= 0b000000;
             break;

@@ -106,7 +106,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     // command
     // TODO: Allow command to come from config
     std::stringstream command_s;
-    command_s << "bowtie2 --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;
@@ -117,7 +117,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
 
 void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-    long align_start = 0, align_end = 0;
+    double elapsed_time = 0.0;
     long this_bucket = 0;
 
     std::vector<std::string> alignments;
@@ -137,11 +137,8 @@ void WrappedMapper::run_alignment() {
             read_future = _pipe.read_async();
 
             alignments.resize(next_bucket.size());
-            align_start = std::chrono::duration_cast<Mills>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
-            call_aligner(_command, next_bucket, &alignments);
-            align_end = std::chrono::duration_cast<Mills>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
+
+            elapsed_time = call_aligner(_command, next_bucket, &alignments);
 
             next_bucket = read_future.get();
 
@@ -150,19 +147,19 @@ void WrappedMapper::run_alignment() {
             // update state
             _align_calls++;
             _reads_aligned += alignments.size();
-            _align_time += (align_end - align_start) / 1000.00;
+            _align_time += elapsed_time;
 
-            _throughput_vec.emplace_back(this_bucket / ((align_end - align_start) / 1000.00));
+            _throughput_vec.emplace_back(this_bucket / elapsed_time);
             _hits_vec.emplace_back(_pipe.cache_hits());
-            _batch_time_vec.emplace_back(((align_end - align_start) / 1000.00));
+            _batch_time_vec.emplace_back(elapsed_time);
             _reads_aligned_vec.emplace_back(_reads_aligned);
 
             // print metrics
-            std::cout << "Batch Align Time: " << ((align_end - align_start) / 1000.00) << "s\n";
+            std::cout << "Batch Align Time: " << elapsed_time << "s\n";
             std::cout << "Reads aligned " << _reads_aligned << "\n";
             std::cout << "Total reads " << _reads_seen << "\n";
             std::cout << _pipe;
-            std::cout << "Throughput: " << (this_bucket / ((align_end - align_start) / 1000.00)) << " r/s\n";
+            std::cout << "Throughput: " << (this_bucket / elapsed_time) << " r/s\n";
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
             write_future.wait();
