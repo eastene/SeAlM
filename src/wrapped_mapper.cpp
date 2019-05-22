@@ -133,7 +133,7 @@ void WrappedMapper::run_alignment() {
     std::ofstream mfile;
     if (!_metric_file.empty()) {
         mfile.open(_metric_file);
-        mfile << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
+        mfile << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned,Compression_Ratio" << std::endl;
     }
 
     _pipe.open();
@@ -166,13 +166,14 @@ void WrappedMapper::run_alignment() {
             if (mfile) {
                 mfile << _align_calls << "," << elapsed_time << "," << (this_bucket / elapsed_time) << ","
                       << _pipe.cache_hits() << ","
-                      << _reads_aligned << std::endl;
+                      << _reads_aligned << "," << _pipe.current_compression_ratio() << std::endl;
                 mfile.flush();
             } else {
                 _throughput_vec.emplace_back(this_bucket / elapsed_time);
                 _hits_vec.emplace_back(_pipe.cache_hits());
                 _batch_time_vec.emplace_back(elapsed_time);
                 _reads_aligned_vec.emplace_back(_reads_aligned);
+                _compression_ratio_vec.emplace_back(_pipe.current_compression_ratio());
             }
 
             // print metrics
@@ -186,6 +187,8 @@ void WrappedMapper::run_alignment() {
             write_future.wait();
         }
     } catch (RequestToEmptyStorageException &rtese) {
+        // update state
+        _align_calls++;
         _reads_aligned += alignments.size();
         auto write_future = _pipe.write_async(alignments);
         write_future.wait();
@@ -198,24 +201,24 @@ void WrappedMapper::run_alignment() {
 
     long end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     _total_time = (end - start) / 1000.00;
-    std::cout << "===== COMPLETE =====" <<
-              std::endl;
 
     if (!_metric_file.empty()) {
         mfile.open(_metric_file, std::ios::app);
         mfile << "# batch_size:" << _bucket_size << " manager_type:" << _manager_type << " cache_type:"
               << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
     }
+
+    std::cout << "===== COMPLETE =====" << std::endl;
 }
 
 std::string WrappedMapper::prepare_log() {
     std::stringstream ss;
     ss << "# batch_size:" << _bucket_size << " manager_type:" << _manager_type << " cache_type:"
        << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
-    ss << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
+    ss << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned,Compression_Ratio" << std::endl;
     for (uint64_t i = 0; i < _align_calls; i++) {
         ss << i << "," << _batch_time_vec[i] << "," << _throughput_vec[i] << "," << _hits_vec[i] << ","
-           << _reads_aligned_vec[i] << std::endl;
+           << _reads_aligned_vec[i] << "," << _compression_ratio_vec[i] << std::endl;
     }
 
     return ss.str();

@@ -54,6 +54,7 @@ protected:
     std::queue<std::unique_ptr<std::vector<std::pair<uint64_t, uint64_t> > > > _multiplexer_buffer;
     std::queue<std::unique_ptr<std::queue<V> > > _cached_values;
     std::queue<uint64_t> _prev_bucket_sizes;
+    std::queue<double> _prev_compression_ratios;
 
     // Compression variables
     CompressionLevel _compression_level;
@@ -125,12 +126,20 @@ public:
 
     bool full() { return _io_subsystem.full(); }
 
-    // TODO make this return actual size
     uint64_t current_bucket_size() {
         uint64_t tmp = 0;
         if (!_prev_bucket_sizes.empty()) {
             tmp = _prev_bucket_sizes.front();
             _prev_bucket_sizes.pop();
+        }
+        return tmp;
+    }
+
+    double current_compression_ratio() {
+        double tmp = 0;
+        if (!_prev_compression_ratios.empty()) {
+            tmp = _prev_compression_ratios.front();
+            _prev_compression_ratios.pop();
         }
         return tmp;
     }
@@ -337,6 +346,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     _multiplexer_buffer.push(std::move(temp_multiplexer));
     _cached_values.push(std::move(temp_cache_hits));
     _prev_bucket_sizes.push(next_bucket->size());
+    _prev_compression_ratios.push(next_bucket->size() / static_cast<double>(unique_entries.size()));
 
     // return only the unique entries given the compression level
     return unique_entries;
