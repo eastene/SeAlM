@@ -298,6 +298,7 @@ void InterleavedIOScheduler<T>::read_until_done() {
 
 template<typename T>
 void InterleavedIOScheduler<T>::read_until_full() {
+    // TODO: fix deadlock caused by flushing an empty buffer then trying to read from it.
     while (!_halt_flag) {
         while (!_storage_empty_flag) {};
         log_info("Storage empty - reading until full.");
@@ -323,7 +324,7 @@ void InterleavedIOScheduler<T>::read_until_full() {
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
             _storage_subsystem->flush();
-            _halt_flag = true;
+            _halt_flag.store(true);
             //throw IOResourceExhaustedException();
         }
     }
@@ -393,10 +394,10 @@ std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>
             return _storage_subsystem->next_bucket();
         } else {
             if (!_storage_subsystem->empty() || !_inputs.empty()) {
-                _storage_empty_flag.store(true);
                 _storage_full_flag.store(false);
+                _storage_empty_flag.store(true);
 
-                while (!_storage_full_flag) {}; // wait until full if empty
+                while (!_storage_full_flag && !_halt_flag) {}; // wait until full if empty
 
                 return _storage_subsystem->next_bucket();
             } else {

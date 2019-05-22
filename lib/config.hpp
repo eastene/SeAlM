@@ -35,6 +35,8 @@ private:
     void parse() {
         std::ifstream config_file(_config_path);
 
+        _configs.insert_or_assign("_this_config", _config_path);
+
         if (config_file && _config_path.extension().string() == _config_extension) {
             for (std::string line; std::getline(config_file, line);) {
                 // remove whitespace

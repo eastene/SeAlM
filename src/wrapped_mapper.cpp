@@ -101,6 +101,8 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     else
         _metric_file = "";
 
+    _config_file = configs.get_val("_this_config");
+
     // extract extra parameters
     _qual_thresh = 5225;
 
@@ -133,7 +135,7 @@ void WrappedMapper::run_alignment() {
     std::ofstream mfile;
     if (!_metric_file.empty()) {
         mfile.open(_metric_file);
-        mfile << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned,Compression_Ratio" << std::endl;
+        mfile << "Batch,Batch_Time,Throughput,Hits,Misses,Reads_Aligned,Compression_Ratio" << std::endl;
     }
 
     _pipe.open();
@@ -165,7 +167,7 @@ void WrappedMapper::run_alignment() {
 
             if (mfile) {
                 mfile << _align_calls << "," << elapsed_time << "," << (this_bucket / elapsed_time) << ","
-                      << _pipe.cache_hits() << ","
+                      << _pipe.cache_hits() << "," << _pipe.cache_misses() << ","
                       << _reads_aligned << "," << _pipe.current_compression_ratio() << std::endl;
                 mfile.flush();
             } else {
@@ -204,8 +206,7 @@ void WrappedMapper::run_alignment() {
 
     if (!_metric_file.empty()) {
         mfile.open(_metric_file, std::ios::app);
-        mfile << "# batch_size:" << _bucket_size << " manager_type:" << _manager_type << " cache_type:"
-              << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
+        mfile << "# config:" << _config_file << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
     }
 
     std::cout << "===== COMPLETE =====" << std::endl;

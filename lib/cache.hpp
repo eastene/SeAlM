@@ -53,6 +53,8 @@ public:
 
     uint64_t hits() { return _hits; }
 
+    uint64_t misses() { return _misses; }
+
     uint32_t capacity() { return _max_cache_size; }
 
     uint32_t size() { return _cache.size(); }

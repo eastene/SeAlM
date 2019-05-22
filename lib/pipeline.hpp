@@ -148,6 +148,8 @@ public:
 
     uint64_t cache_hits() { return _cache_subsystem->hits(); }
 
+    uint64_t cache_misses() { return _cache_subsystem->misses(); }
+
     uint64_t capacity() { return _io_subsystem.capacity(); }
 
     /*
