@@ -96,6 +96,11 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
 
     prep_experiment(configs, &_pipe);
 
+    if (configs.contains("metrics"))
+        _metric_file = configs.get_val("metrics");
+    else
+        _metric_file = "";
+
     // extract extra parameters
     _qual_thresh = 5225;
 
@@ -116,6 +121,8 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
 }
 
 void WrappedMapper::run_alignment() {
+    std::cout << "===== BEGINNING ALIGNMENT =====" << std::endl;
+
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     double elapsed_time = 0.0;
     long this_bucket = 0;
@@ -123,13 +130,20 @@ void WrappedMapper::run_alignment() {
     std::vector<std::string> alignments;
     initialize_alignment();
 
+    std::ofstream mfile;
+    if (!_metric_file.empty()) {
+        mfile.open(_metric_file);
+        mfile << "Batch,Batch_Time,Throughput,Hits,Reads_Aligned" << std::endl;
+    }
+
     _pipe.open();
 
     // align first bucket synchronously since aligner may have to load reference
     // and this data point should be ignored due to variable time spent loading
     auto read_future = _pipe.read_async();
     auto next_bucket = read_future.get();
-
+    elapsed_time = call_aligner(_command, next_bucket, &alignments); // call once without timing to load reference
+    std::cout << "Reference Load Time: " << elapsed_time << "s\n";
     try {
         while (true) {
             this_bucket = _pipe.current_bucket_size();
@@ -149,10 +163,17 @@ void WrappedMapper::run_alignment() {
             _reads_aligned += alignments.size();
             _align_time += elapsed_time;
 
-            _throughput_vec.emplace_back(this_bucket / elapsed_time);
-            _hits_vec.emplace_back(_pipe.cache_hits());
-            _batch_time_vec.emplace_back(elapsed_time);
-            _reads_aligned_vec.emplace_back(_reads_aligned);
+            if (mfile) {
+                mfile << _align_calls << "," << elapsed_time << "," << (this_bucket / elapsed_time) << ","
+                      << _pipe.cache_hits() << ","
+                      << _reads_aligned << std::endl;
+                mfile.flush();
+            } else {
+                _throughput_vec.emplace_back(this_bucket / elapsed_time);
+                _hits_vec.emplace_back(_pipe.cache_hits());
+                _batch_time_vec.emplace_back(elapsed_time);
+                _reads_aligned_vec.emplace_back(_reads_aligned);
+            }
 
             // print metrics
             std::cout << "Batch Align Time: " << elapsed_time << "s\n";
@@ -168,6 +189,8 @@ void WrappedMapper::run_alignment() {
         _reads_aligned += alignments.size();
         auto write_future = _pipe.write_async(alignments);
         write_future.wait();
+        if (mfile)
+            mfile.close();
     }
 
     // stop reading (in case of exception above) and flush output buffer
@@ -177,6 +200,12 @@ void WrappedMapper::run_alignment() {
     _total_time = (end - start) / 1000.00;
     std::cout << "===== COMPLETE =====" <<
               std::endl;
+
+    if (!_metric_file.empty()) {
+        mfile.open(_metric_file, std::ios::app);
+        mfile << "# batch_size:" << _bucket_size << " manager_type:" << _manager_type << " cache_type:"
+              << _cache_type << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
+    }
 }
 
 std::string WrappedMapper::prepare_log() {

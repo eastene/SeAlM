@@ -56,6 +56,7 @@ private:
     std::vector<int> _hits_vec;
     std::vector<float> _batch_time_vec;
     std::vector<uint32_t> _reads_aligned_vec;
+    std::string _metric_file;
 
     // private methods
     void initialize_alignment();

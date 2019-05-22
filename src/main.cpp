@@ -122,12 +122,12 @@ int main(int argc, char **argv) {
         // print final metrics
         std::cout << wm;
         // log per-batch metrics
-        if (cfp.contains("metrics")) {
-            std::string metrics_file = cfp.get_val("metrics");
-            std::ofstream log(metrics_file);
-            log << wm.prepare_log();
-            log.close();
-        }
+//        if (cfp.contains("metrics")) {
+//            std::string metrics_file = cfp.get_val("metrics");
+//            std::ofstream log(metrics_file);
+//            log << wm.prepare_log();
+//            log.close();
+//        }
     } else {
         // perform alignment with args
         WrappedMapper wm(opts);
