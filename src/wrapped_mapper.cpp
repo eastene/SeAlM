@@ -135,6 +135,12 @@ void WrappedMapper::run_alignment() {
     std::ofstream mfile;
     if (!_metric_file.empty()) {
         mfile.open(_metric_file);
+        mfile << "# Num_Files:" << _pipe.get_filenames().size() << std::endl;
+        mfile << "# File_Names:";
+        for (const auto &infile : _pipe.get_filenames()){
+            mfile << infile << ",";
+        }
+        mfile << std::endl;
         mfile << "Batch,Batch_Time,Throughput,Hits,Misses,Reads_Aligned,Compression_Ratio" << std::endl;
     }
 

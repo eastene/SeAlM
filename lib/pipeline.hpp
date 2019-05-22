@@ -108,6 +108,8 @@ public:
      * Getters/Setters
      */
 
+    std::vector<std::string> get_filenames() { return _io_subsystem.get_input_filenames(); }
+
     void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
 
     void set_cache_subsystem(std::unique_ptr<InMemCache<K, V> > &other) { _cache_subsystem = std::move(other); }
