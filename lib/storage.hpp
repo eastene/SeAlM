@@ -24,6 +24,15 @@ class BadChainPushException : public std::exception {
 
 
 /*
+ *  Storage Specific Types
+ */
+
+enum ChainSwitch {
+    LONGEST,
+    RANDOM
+};
+
+/*
  * ORDERED SEQUENCE STORAGE
  *
  * Base class of types that implement storage for
@@ -47,6 +56,7 @@ protected:
     std::vector<uint16_t> _chain_lengths;
     uint64_t _current_chain;
     bool _flushed;
+    ChainSwitch _chain_switch;
 
     // Atomic variables
     bool _alive;
@@ -75,6 +85,7 @@ public:
         _current_chain = 0;
         _alive = true;
         _flushed = false;
+        _chain_switch = ChainSwitch::LONGEST;
 
         _max_buckets = 1;
         _table_width = 1;
@@ -143,6 +154,8 @@ public:
     void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
 
     void set_ordering(std::function<uint64_t(const T &, const T &)> fn) { this->_value_ordering = fn; }
+
+    void set_chain_switch_mode(ChainSwitch cs) { _chain_switch = cs; }
 
     // TODO: add resize function that doesn't reinitialize all state
     void set_table_width(uint64_t table_width) {
@@ -248,6 +261,8 @@ void BufferedBuckets<T>::initialize() {
     this->_current_chain = 0;
     _next_bucket_itr = _buckets[0].end();
     this->_alive = true;
+
+    srand(time(NULL));
 }
 
 template<typename T>
@@ -313,7 +328,17 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         _buckets[this->_current_chain].pop_front();
         // consume chains until empty, then move to next chain, chosen as longest chain
         this->_chain_lengths[this->_current_chain]--;
-        if (_buckets[this->_current_chain].empty()) {
+        if (this->_chain_switch == ChainSwitch::RANDOM) {
+            log_info("Switching chains.");
+            uint16_t r = rand() % this->_table_width;
+            for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
+                if (this->_chain_lengths[r] != 0) {
+                    this->_current_chain = r;
+                    break;
+                }
+                r = rand() % this->_table_width;
+            }
+        } else if (_buckets[this->_current_chain].empty()) {
             log_info("Switching chains.");
             uint16_t max_elem = 0;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
@@ -323,6 +348,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
                 }
             }
         }
+
         // point to next bucket for consumption
         if (_buckets[this->_current_chain].empty()) {
             // empty structure, set next bucket to sentinel value

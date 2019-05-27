@@ -75,7 +75,7 @@ uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
     auto payload = data.second;
     uint64_t hash = 0b0;
     uint64_t s = payload[1].size();
-    switch (payload[1][s-3]) {
+    switch (payload[1][s - 3]) {
         case 'A':
         case 'C':
             hash |= 0b00;
@@ -87,7 +87,7 @@ uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
             break;
     }
 
-    switch (payload[1][s-2]) {
+    switch (payload[1][s - 2]) {
         case 'A':
             hash |= 0b0000;
             break;
@@ -105,7 +105,7 @@ uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
             break;
     }
 
-    switch (payload[1][s-1]) {
+    switch (payload[1][s - 1]) {
         case 'A':
             hash |= 0b000000;
             break;
@@ -198,6 +198,10 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
             bb->set_table_width(64);
         }
         // else keep default
+    }
+
+    if (cfp.get_val("chain_switch") == "random") {
+        bb->set_chain_switch_mode(ChainSwitch::RANDOM);
     }
 
     io.set_storage_subsystem(bb);
