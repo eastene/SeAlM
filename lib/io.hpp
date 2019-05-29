@@ -148,6 +148,8 @@ public:
 
     uint64_t capacity() { return _storage_subsystem->capacity(); }
 
+    bool eoc() { return _storage_subsystem->eoc(); }
+
     /*
      * Operator Overloads
      */

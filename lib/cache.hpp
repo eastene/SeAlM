@@ -11,10 +11,12 @@
 #include <vector>
 #include <mutex>
 #include <unordered_map>
+#include <random>
 #include "../src/types.hpp"
+#include "signaling.hpp"
 
 template<typename K, typename V>
-class InMemCache {
+class InMemCache : public Observer {
 protected:
     // Storage structure
     std::unordered_map<K, V> _cache;
@@ -39,9 +41,9 @@ public:
      * Implemented Base Methods
      */
 
-    InMemCache() : _max_cache_size{1048576}, _hits{0}, _misses{0}, _keys{0} {};
+    InMemCache() : _max_cache_size{1048576 * 2}, _hits{0}, _misses{0}, _keys{0} {};
 
-    void set_max_size(uint64_t max_size){_max_cache_size = max_size;}
+    void set_max_size(uint64_t max_size) { _max_cache_size = max_size; }
 
     /*
      * State Descriptors
@@ -59,7 +61,9 @@ public:
 
     uint32_t size() { return _cache.size(); }
 
-    virtual typename std::unordered_map<K, V>::iterator end() { return _cache.end(); }
+    typename std::unordered_map<K, V>::iterator end() { return _cache.end(); }
+
+    virtual void update(int event) {};
 
     /*
      *
@@ -85,6 +89,12 @@ public:
     }
 };
 
+
+/*
+ *  Dummy Cache
+ */
+
+
 template<typename K, typename V>
 class DummyCache : public InMemCache<K, V> {
 private:
@@ -106,50 +116,6 @@ public:
 
     V &operator[](K &key) override;
 };
-
-template<typename K, typename V>
-class LRUCache : public InMemCache<K, V> {
-protected:
-    std::list<K> _order;
-    std::unordered_map<K, typename std::list<K>::iterator> _order_lookup;
-
-    void evict() override;
-
-public:
-
-    LRUCache();
-
-    void insert(const K &key, const V &value) override;
-
-    void insert_no_evict(const K &key, const V &value) override;
-
-    void trim();
-
-    typename std::unordered_map<K, V>::iterator find(const K &key) override;
-
-    V &at(const K &key) override;
-
-    V &operator[](K &key) override;
-};
-
-
-template<typename K, typename V>
-class MRUCache : public LRUCache<K, V> {
-private:
-    void evict() override;
-
-public:
-    MRUCache() : LRUCache<K, V>() {};
-
-    void insert_no_evict(const K &key, const V &value) override;
-
-    void trim();
-};
-
-
-/*
- *  Dummy Cache
- */
 
 template<typename K, typename V>
 void DummyCache<K, V>::evict() {}
@@ -182,6 +148,32 @@ V &DummyCache<K, V>::operator[](K &key) {
 /*
  *  LRU CACHE
  */
+
+
+template<typename K, typename V>
+class LRUCache : public InMemCache<K, V> {
+protected:
+    std::list<K> _order;
+    std::unordered_map<K, typename std::list<K>::iterator> _order_lookup;
+
+    void evict() override;
+
+public:
+
+    LRUCache();
+
+    void insert(const K &key, const V &value) override;
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
+
+    typename std::unordered_map<K, V>::iterator find(const K &key) override;
+
+    V &at(const K &key) override;
+
+    V &operator[](K &key) override;
+};
 
 template<typename K, typename V>
 LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
@@ -268,6 +260,20 @@ V &LRUCache<K, V>::operator[](K &key) {
  * MRU CACHE
  */
 
+
+template<typename K, typename V>
+class MRUCache : public LRUCache<K, V> {
+private:
+    void evict() override;
+
+public:
+    MRUCache() : LRUCache<K, V>() {};
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
+};
+
 template<typename K, typename V>
 void MRUCache<K, V>::evict() {
     std::string key = this->_order.front();
@@ -297,5 +303,79 @@ void MRUCache<K, V>::trim() {
         this->evict();
     }
 }
+
+
+/*
+ * CHAIN DECAY CACHE
+ */
+
+
+template<typename K, typename V>
+class ChainDecayCache : public LRUCache<K, V> {
+protected:
+    // Decay parameters
+    float lambda;
+    std::default_random_engine generator;
+    std::bernoulli_distribution keep_prob;
+
+public:
+
+    ChainDecayCache() : LRUCache<K, V>() {
+        lambda = 0.8;
+        std::bernoulli_distribution new_prob(0.99);
+        keep_prob.param(new_prob.param());
+    };
+
+    void insert(const K &key, const V &value) override;
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void update(int event) {
+        if (event == 0) {
+            // EOC Event
+            std::bernoulli_distribution new_prob(0.99);
+            keep_prob.param(new_prob.param());
+        } else if (event == 1) {
+            // EOB event
+            std::bernoulli_distribution new_prob(keep_prob.p() * lambda);
+            keep_prob.param(new_prob.param());
+        }
+    };
+
+};
+
+template<typename K, typename V>
+void ChainDecayCache<K, V>::insert(const K &key, const V &value) {
+    if (keep_prob(generator)) {
+        std::lock_guard<std::mutex> lock(this->_cache_mutex);
+        if (this->_cache.find(key) == this->_cache.end()) {
+            if (this->_cache.size() >= this->_max_cache_size) {
+                this->evict();
+            }
+            this->_order.emplace_front(key);
+            this->_order_lookup.emplace(key, this->_order.begin());
+            this->_cache.emplace(key, value);
+
+            // only change recency of read on access, not on addition
+            this->_keys++;
+        }
+    }
+}
+
+template<typename K, typename V>
+void ChainDecayCache<K, V>::insert_no_evict(const K &key, const V &value) {
+    if (keep_prob(generator)) {
+        std::lock_guard<std::mutex> lock(this->_cache_mutex);
+        if (this->_cache.find(key) == this->_cache.end()) {
+            this->_order.emplace_front(key);
+            this->_order_lookup.emplace(key, this->_order.begin());
+            this->_cache.emplace(key, value);
+
+            // only change recency of read on access, not on addition
+            this->_keys++;
+        }
+    }
+}
+
 
 #endif //ALIGNER_CACHE_CACHE_HPP

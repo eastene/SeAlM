@@ -169,6 +169,24 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     InterleavedIOScheduler<Read> io;
 
     /*
+     * Cache Parameters
+     */
+
+    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    if (cfp.contains("cache")) {
+        std::string cache = cfp.get_val("cache");
+        if (cache == "lru") {
+            c = std::make_shared<LRUCache<std::string, std::string> >();
+        } else if (cache == "mru") {
+            c = std::make_shared<MRUCache<std::string, std::string> >();
+        } else if (cache == "decay"){
+            c = std::make_shared<ChainDecayCache<std::string, std::string> >();
+        }
+        pipe->set_cache_subsystem(c);
+        pipe->register_observer(c);
+    }
+
+    /*
      * Storage Parameters
      */
 
@@ -203,6 +221,8 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     if (cfp.get_val("chain_switch") == "random") {
         bb->set_chain_switch_mode(ChainSwitch::RANDOM);
     }
+
+    bb->register_observer(c);
 
     io.set_storage_subsystem(bb);
 
@@ -239,18 +259,6 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
             pipe->set_compression_level(CROSS);
         } else {
             pipe->set_compression_level(NONE);
-        }
-    }
-
-    if (cfp.contains("cache")) {
-        std::unique_ptr<InMemCache<std::string, std::string> > c;
-        std::string cache = cfp.get_val("cache");
-        if (cache == "lru") {
-            c = std::make_unique<LRUCache<std::string, std::string> >();
-            pipe->set_cache_subsystem(c);
-        } else if (cache == "mru") {
-            c = std::make_unique<MRUCache<std::string, std::string> >();
-            pipe->set_cache_subsystem(c);
         }
     }
 

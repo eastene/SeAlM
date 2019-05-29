@@ -34,7 +34,7 @@ enum CompressionLevel {
 
 // T-dataType, K-cacheKey, V-cacheValue
 template<typename T, typename K, typename V>
-class BucketedPipelineManager {
+class BucketedPipelineManager : public Observable {
 protected:
     // IO variables
     //TODO: change to unique pointer (?)
@@ -42,7 +42,7 @@ protected:
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    std::unique_ptr<InMemCache<K, V> > _cache_subsystem;
+    std::shared_ptr<InMemCache<K, V> > _cache_subsystem;
 
     // Current bucket data structures
     std::vector<T> _current_bucket;
@@ -112,7 +112,7 @@ public:
 
     void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
 
-    void set_cache_subsystem(std::unique_ptr<InMemCache<K, V> > &other) { _cache_subsystem = std::move(other); }
+    void set_cache_subsystem(std::shared_ptr<InMemCache<K, V> > &other) { _cache_subsystem = other; }
 
     void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = other; }
 
@@ -424,6 +424,7 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
             }
         }
+        notify(1);
         _cache_subsystem->trim();
     }
 }

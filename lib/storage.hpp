@@ -42,7 +42,7 @@ enum ChainSwitch {
 
 // T - sequence Type (string, vector, etc.)
 template<typename T>
-class OrderedSequenceStorage {
+class OrderedSequenceStorage : public Observable {
 protected:
     // Sizing limits
     uint64_t _max_buckets;
@@ -328,7 +328,10 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         _buckets[this->_current_chain].pop_front();
         // consume chains until empty, then move to next chain, chosen as longest chain
         this->_chain_lengths[this->_current_chain]--;
+
         if (this->_chain_switch == ChainSwitch::RANDOM) {
+            this->notify(0);
+            // RANDOM CHAIN SWITCHING
             log_info("Switching chains.");
             uint16_t r = rand() % this->_table_width;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
@@ -339,6 +342,8 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
                 r = rand() % this->_table_width;
             }
         } else if (_buckets[this->_current_chain].empty()) {
+            this->notify(0);
+            // STRUCTURED CHAIN SWITCHING
             log_info("Switching chains.");
             uint16_t max_elem = 0;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
