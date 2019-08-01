@@ -179,8 +179,8 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
             c = std::make_shared<LRUCache<std::string, std::string> >();
         } else if (cache == "mru") {
             c = std::make_shared<MRUCache<std::string, std::string> >();
-        } else if (cache == "decay"){
-            c = std::make_shared<ChainDecayCache<std::string, std::string> >();
+//        } else if (cache == "decay"){
+//            c = std::make_shared<ChainDecayCache<std::string, std::string> >();
         } else {
             c = std::make_shared<DummyCache<std::string, std::string> >();
         }

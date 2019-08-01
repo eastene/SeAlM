@@ -85,7 +85,9 @@ private:
 
     void read_until_full(); // synchronous fill -> empty cycle
 
-    void write_buffer(std::vector<std::pair<uint64_t, std::string>> _multiplexed_buff);
+    void write_buffer(std::vector<std::pair<uint64_t, std::string>> &_multiplexed_buff);
+
+    void write_buffer_multiplexed(std::vector<std::pair<uint64_t, std::string>> &_multiplexed_buff);
 
 public:
     InterleavedIOScheduler();
@@ -333,7 +335,23 @@ void InterleavedIOScheduler<T>::read_until_full() {
 }
 
 template<typename T>
-void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std::string>> _multiplexed_buff) {
+void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std::string>> &_buff) {
+    if (!_buff.empty()) {
+        // open first file
+        uint64_t curr_file = _buff[0].first;
+        std::ofstream fout(_outputs[curr_file], std::ios::app);
+
+        // write each line in buffer, switching files when necessary
+        for (const auto &mtpx_line : _buff) {
+            fout << mtpx_line.second;
+        }
+        fout.close();
+    }
+}
+
+template<typename T>
+void
+InterleavedIOScheduler<T>::write_buffer_multiplexed(std::vector<std::pair<uint64_t, std::string>> &_multiplexed_buff) {
     if (!_multiplexed_buff.empty()) {
         // put buffer in order of files to make writing more efficient
         std::sort(_multiplexed_buff.begin(), _multiplexed_buff.end(),
@@ -424,9 +442,13 @@ std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::re
 
 template<typename T>
 void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line) {
-    _out_buff.push_back(std::make_pair(out_ind, line + "\n"));
+    _out_buff.emplace_back(std::make_pair(out_ind, line + "\n"));
     if (_out_buff.size() >= _out_buff_threshold) {
-        write_buffer(_out_buff);
+        if (_outputs.size() > 1) {
+            write_buffer_multiplexed(_out_buff);
+        } else {
+            write_buffer(_out_buff);
+        }
         _out_buff.clear();
         //std::thread([&](){write_buffer(_out_buff);}).detach();
     }

@@ -24,6 +24,7 @@ include(FetchContent)
 #        GIT_TAG v1.7.2
 #)
 
+# Catch 2 for testing
 FetchContent_Declare(
         catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
