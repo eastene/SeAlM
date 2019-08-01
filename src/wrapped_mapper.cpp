@@ -156,6 +156,7 @@ void WrappedMapper::run_alignment() {
         while (true) {
             this_bucket = _pipe.current_bucket_size();
             _reads_seen += this_bucket;
+
             read_future = _pipe.read_async();
 
             alignments.resize(next_bucket.size());
@@ -192,7 +193,8 @@ void WrappedMapper::run_alignment() {
             std::cout << "Throughput: " << (this_bucket / elapsed_time) << " r/s\n";
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
-            write_future.wait();
+
+            //write_future.wait();
         }
     } catch (RequestToEmptyStorageException &rtese) {
         // update state

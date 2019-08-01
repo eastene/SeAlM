@@ -181,6 +181,8 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
             c = std::make_shared<MRUCache<std::string, std::string> >();
         } else if (cache == "decay"){
             c = std::make_shared<ChainDecayCache<std::string, std::string> >();
+        } else {
+            c = std::make_shared<DummyCache<std::string, std::string> >();
         }
         pipe->set_cache_subsystem(c);
         pipe->register_observer(c);
