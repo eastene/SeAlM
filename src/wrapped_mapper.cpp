@@ -89,6 +89,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
         exit(1);
     }
     _reference = configs.get_val("reference");
+    _bucket_size = configs.get_long_val("bucket_size");
 
     //std::set<std::string> formats {'.fastq', '.fasta', '.fa', '.fq'};
     //assert (['.fastq', '.fasta', '.fa', '.fq'])'
@@ -125,11 +126,10 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
 void WrappedMapper::run_alignment() {
     std::cout << "===== BEGINNING ALIGNMENT =====" << std::endl;
 
-    long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     double elapsed_time = 0.0;
     long this_bucket = 0;
 
-    std::vector<std::string> alignments;
+    std::vector<std::string> alignments (_bucket_size);
     initialize_alignment();
 
     std::ofstream mfile;
@@ -152,14 +152,18 @@ void WrappedMapper::run_alignment() {
     auto next_bucket = read_future.get();
     elapsed_time = call_aligner(_command, next_bucket, &alignments); // call once without timing to load reference
     std::cout << "Reference Load Time: " << elapsed_time << "s\n";
+
+    long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     try {
         while (true) {
+            long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+
             this_bucket = _pipe.current_bucket_size();
             _reads_seen += this_bucket;
 
             read_future = _pipe.read_async();
 
-            alignments.resize(next_bucket.size());
+            //alignments.resize(next_bucket.size());
 
             elapsed_time = call_aligner(_command, next_bucket, &alignments);
 
@@ -167,10 +171,14 @@ void WrappedMapper::run_alignment() {
 
             auto write_future = _pipe.write_async(alignments);
 
+            long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+            // write_future.wait();
             // update state
             _align_calls++;
             _reads_aligned += alignments.size();
             _align_time += elapsed_time;
+            _process_time += (batch_end - batch_start) / 1000.00;
 
             if (mfile) {
                 mfile << _align_calls << "," << elapsed_time << "," << (this_bucket / elapsed_time) << ","
@@ -186,12 +194,13 @@ void WrappedMapper::run_alignment() {
             }
 
             // print metrics
-            std::cout << "Batch Align Time: " << elapsed_time << "s\n";
-            std::cout << "Reads aligned " << _reads_aligned << "\n";
+            std::cout << "Batch Total Time: " << ((batch_end - batch_start) / 1000.00) << "s\n";
+            std::cout << "  Batch Align Time: " << elapsed_time << "s\n";
             std::cout << "Total reads " << _reads_seen << "\n";
+            std::cout << "  Reads aligned " << _reads_aligned << "\n";
             std::cout << _pipe;
-            std::cout << "Throughput: " << (this_bucket / elapsed_time) << " r/s\n";
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
+            std::cout << "  Instant Throughput: " << (this_bucket / elapsed_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
 
             //write_future.wait();
@@ -200,8 +209,13 @@ void WrappedMapper::run_alignment() {
         // update state
         _align_calls++;
         _reads_aligned += alignments.size();
+
+        long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
         auto write_future = _pipe.write_async(alignments);
         write_future.wait();
+        long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        _process_time += (batch_end - batch_start) / 1000.00;
         if (mfile)
             mfile.close();
     }

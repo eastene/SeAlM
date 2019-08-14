@@ -439,11 +439,12 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 line_out = _postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
                 _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
                 // TODO: figure out why this is so slow
-                _cache_subsystem->insert(_extract_key_fn((*temp_bucket)[i]), out[(*temp_multiplexer)[i].second]);
+                _cache_subsystem->insert_no_evict(_extract_key_fn((*temp_bucket)[i]), out[(*temp_multiplexer)[i].second]);
             }
         }
         notify(1);
-        //_cache_subsystem->trim();
+        if (_cache_subsystem->size() > _cache_subsystem->capacity())
+            _cache_subsystem->trim();
         long w_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
         std::cout << "Write time: " << (w_end - w_start) << std::endl;
     }

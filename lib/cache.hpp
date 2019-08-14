@@ -183,8 +183,8 @@ template<typename K, typename V>
 LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
     // Preallocate space for cache
     //_order.resize(this->_max_cache_size);
-    _order_lookup.reserve(this->_max_cache_size);
-    this->_cache_index.reserve(this->_max_cache_size);
+    _order_lookup.reserve(this->_max_cache_size + 60000);
+    this->_cache_index.reserve(this->_max_cache_size + 60000);
 }
 
 template<typename K, typename V>
@@ -216,7 +216,8 @@ void LRUCache<K, V>::insert(const K &key, const V &value) {
 
 template<typename K, typename V>
 void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
-    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    // No lock required, adds data only
+    //std::lock_guard<std::mutex> lock(this->_cache_mutex);
     if (this->_cache_index.find(key) == this->_cache_index.end()) {
         _order.emplace_front(key);
         _order_lookup.emplace(key, _order.begin());

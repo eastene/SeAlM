@@ -186,7 +186,8 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _read_head = 0;
     _input_pattern = "";
     _auto_output_ext = "_out";
-    _out_buff_threshold = 100000;
+    _out_buff_threshold = 200000;
+    _out_buff.reserve(_out_buff_threshold);
 
     _halt_flag.store(false);
     _async_fill_flag.store(true);
@@ -205,7 +206,7 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_patte
     _read_head = 0;
     _input_pattern = input_pattern;
     _auto_output_ext = "_out";
-    _out_buff_threshold = 100000;
+    _out_buff_threshold = 200000;
 
     _halt_flag.store(false);
     _async_fill_flag.store(true);
@@ -450,6 +451,7 @@ void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line)
             write_buffer(_out_buff);
         }
         _out_buff.clear();
+        _out_buff.reserve(_out_buff_threshold);
         //std::thread([&](){write_buffer(_out_buff);}).detach();
     }
 }

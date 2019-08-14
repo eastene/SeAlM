@@ -49,6 +49,7 @@ private:
     // metrics
     double _total_time;
     double _align_time;
+    double _process_time;
     uint64_t _reads_seen;
     uint64_t _reads_aligned;
     uint64_t _align_calls;
@@ -75,6 +76,7 @@ public:
 
     friend std::ostream &operator<<(std::ostream &output, const WrappedMapper &W) {
         output << "Overall Runtime: " << W._total_time << "s\n";
+        output << "  Total Processing Time: " << W._process_time << "s\n";
         output << "  Total Align Time: " << W._align_time << "s\n";
         output << "Total reads " << W._reads_seen << "\n";
         output << "   Reads aligned " << W._reads_aligned << "\n";

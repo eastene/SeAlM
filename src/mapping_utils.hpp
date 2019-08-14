@@ -12,7 +12,7 @@
 #include "../lib/external/cpp-subprocess-master/subprocess.hpp"
 #include "wrapped_mapper.hpp"
 
-double
+void
 align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::string> *alignments) {
     std::stringstream ss;
     for (Read read : batch) {
@@ -62,11 +62,8 @@ align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::str
     auto proc = subprocess::Popen({command}, subprocess::input{subprocess::PIPE},
                                   subprocess::output{subprocess::PIPE},
                                   subprocess::error{subprocess::PIPE});
-    long align_start = std::chrono::duration_cast<Mills>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
+
     auto res = proc.communicate(ss.str().c_str(), ss.str().size());
-    long align_end = std::chrono::duration_cast<Mills>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
     //std::cout << res.first.buf.data();
     uint64_t k = 0;
 
@@ -76,13 +73,18 @@ align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::str
         (*alignments)[k++] = line;
     }
 
-    return (align_end - align_start) / 1000.00;
+
 }
 
 double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std::vector<std::string> *alignments) {
-    alignments->clear();
-    alignments->resize(reduced_batch.size());
-    return align_batch(command, reduced_batch, alignments);
+    //alignments->clear();
+    //alignments->resize(reduced_batch.size());
+    long align_start = std::chrono::duration_cast<Mills>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    align_batch(command, reduced_batch, alignments);
+    long align_end = std::chrono::duration_cast<Mills>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    return (align_end - align_start) / 1000.00;
 }
 
 
