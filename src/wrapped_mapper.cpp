@@ -158,8 +158,8 @@ void WrappedMapper::run_alignment() {
         while (true) {
             long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-            this_bucket = _pipe.current_bucket_size();
-            _reads_seen += this_bucket;
+            this_bucket = next_bucket.size();
+            _reads_seen += _bucket_size;
 
             read_future = _pipe.read_async();
 
@@ -176,17 +176,17 @@ void WrappedMapper::run_alignment() {
             // write_future.wait();
             // update state
             _align_calls++;
-            _reads_aligned += alignments.size();
+            _reads_aligned += this_bucket;
             _align_time += elapsed_time;
             _process_time += (batch_end - batch_start) / 1000.00;
 
             if (mfile) {
-                mfile << _align_calls << "," << elapsed_time << "," << (this_bucket / elapsed_time) << ","
+                mfile << _align_calls << "," << elapsed_time << "," << (_bucket_size / elapsed_time) << ","
                       << _pipe.cache_hits() << "," << _pipe.cache_misses() << ","
                       << _reads_aligned << "," << _pipe.current_compression_ratio() << std::endl;
                 mfile.flush();
             } else {
-                _throughput_vec.emplace_back(this_bucket / elapsed_time);
+                _throughput_vec.emplace_back(_bucket_size / elapsed_time);
                 _hits_vec.emplace_back(_pipe.cache_hits());
                 _batch_time_vec.emplace_back(elapsed_time);
                 _reads_aligned_vec.emplace_back(_reads_aligned);
@@ -198,9 +198,10 @@ void WrappedMapper::run_alignment() {
             std::cout << "  Batch Align Time: " << elapsed_time << "s\n";
             std::cout << "Total reads " << _reads_seen << "\n";
             std::cout << "  Reads aligned " << _reads_aligned << "\n";
+            std::cout << "  Reads aligned this batch: " << this_bucket << "\n";
             std::cout << _pipe;
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
-            std::cout << "  Instant Throughput: " << (this_bucket / elapsed_time) << " r/s\n";
+            std::cout << "  Instant Throughput: " << (_bucket_size / elapsed_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
 
             //write_future.wait();

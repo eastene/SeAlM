@@ -42,7 +42,7 @@ protected:
 public:
 
     /*
-     * Implemented Base Methods
+     * Implemented Base Methods 1048576 * 4
      */
 
     InMemCache() : _max_cache_size{1048576 * 4}, _hits{0}, _misses{0}, _keys{0} {};
@@ -183,8 +183,8 @@ template<typename K, typename V>
 LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
     // Preallocate space for cache
     //_order.resize(this->_max_cache_size);
-    _order_lookup.reserve(this->_max_cache_size + 60000);
-    this->_cache_index.reserve(this->_max_cache_size + 60000);
+    _order_lookup.reserve(this->_max_cache_size + 50000);
+    this->_cache_index.reserve(this->_max_cache_size + 50000);
 }
 
 template<typename K, typename V>
@@ -232,9 +232,18 @@ void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
 template<typename K, typename V>
 void LRUCache<K, V>::trim() {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
-    for (uint64_t i = this->_cache_index.size(); i >= this->_max_cache_size; i--) {
-        evict();
+    K key;
+    for (uint64_t i = this->_cache_index.size(); i >= this->_max_cache_size; i--){
+        key = _order.back();
+        _order.pop_back();
+        _order_lookup.erase(key);
+        this->_cache_index.erase(key);
+        this->_keys--;
     }
+
+//    for (uint64_t i = this->_cache_index.size(); i >= this->_max_cache_size; i--) {
+//        evict();
+//    }
 }
 
 template<typename K, typename V>
