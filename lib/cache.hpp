@@ -16,7 +16,6 @@
 #include "signaling.hpp"
 
 
-
 template<typename K, typename V>
 class InMemCache : public Observer {
 protected:
@@ -87,6 +86,9 @@ public:
 
     virtual V &operator[](K &key) = 0;
 
+    // TODO: find more consistent way to do this?
+    virtual void fetch_into(const K &key, V *buff) = 0;
+
     friend std::ostream &operator<<(std::ostream &output, const InMemCache &C) {
         output << "Hits: " << C._hits << " Misses: " << C._misses << " Size: " << C._keys;
         return output;
@@ -119,6 +121,8 @@ public:
     V &at(const K &key) override;
 
     V &operator[](K &key) override;
+
+    void fetch_into(const K &key, V *buff) override;
 };
 
 template<typename K, typename V>
@@ -146,6 +150,11 @@ V &DummyCache<K, V>::at(const K &key) {
 template<typename K, typename V>
 V &DummyCache<K, V>::operator[](K &key) {
     return key;
+}
+
+template<typename K, typename V>
+void DummyCache<K, V>::fetch_into(const K &key, V *buff) {
+    buff = nullptr;
 }
 
 
@@ -177,6 +186,8 @@ public:
     V &at(const K &key) override;
 
     V &operator[](K &key) override;
+
+    void fetch_into(const K &key, V *buff) override;
 };
 
 template<typename K, typename V>
@@ -233,7 +244,7 @@ template<typename K, typename V>
 void LRUCache<K, V>::trim() {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
     K key;
-    for (uint64_t i = this->_cache_index.size(); i >= this->_max_cache_size; i--){
+    for (uint64_t i = this->_cache_index.size(); i >= this->_max_cache_size; i--) {
         key = _order.back();
         _order.pop_back();
         _order_lookup.erase(key);
@@ -267,6 +278,22 @@ template<typename K, typename V>
 V &LRUCache<K, V>::operator[](K &key) {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
     return *this->_cache_index[key];
+}
+
+template<typename K, typename V>
+void LRUCache<K, V>::fetch_into(const K &key, V *buff) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    auto find_ptr = this->_cache_index.find(key);
+    find_ptr != this->_cache_index.end() ? this->_hits++ : this->_misses++;
+    if (find_ptr != this->end()){
+        _order.erase(_order_lookup[key]);
+        _order.emplace_front(key);
+        _order_lookup.insert_or_assign(key, _order.begin());
+        buff = new std::string(*(this->_cache_index.at(key))); //*this->_cache_index.at(key);
+    } else {
+        // TODO: find a safer return value
+        buff = nullptr;
+    }
 }
 
 
