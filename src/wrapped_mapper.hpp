@@ -36,6 +36,7 @@ private:
     uint32_t _qual_thresh;
     int _cache_type;
     int _manager_type;
+    bool _suppress_sam;
 
     // derived parameters
     char _input_type; // if input_format in ['.fasta', '.fa'] else 'q'

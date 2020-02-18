@@ -13,18 +13,20 @@ int main(int argc, char **argv) {
         static struct option long_options[] =
                 {
                         /* These options set a flag. */
-                        {"verbose",       no_argument,       &opts.verbose_flag, 1},
-                        {"quiet",         no_argument,       &opts.verbose_flag, 0},
+                        {"verbose",       no_argument,       &opts.verbose_flag,      1},
+                        {"quiet",         no_argument,       &opts.verbose_flag,      0},
+                        {"suppress_sam",  no_argument,       &opts.sam_suppress_flag, 1},
+                        {"interleaved",   no_argument,       &opts.interleaved,       1},
                         /* These options don’t set a flag.
                            We distinguish them by their indices. */
-                        {"input_pattern", required_argument, 0,                  'i'},
-                        {"data_dir",      required_argument, 0,                  'd'},
-                        {"reference",     required_argument, 0,                  'x'},
-                        {"output_file",   required_argument, 0,                  's'},
-                        {"metrics_file",  required_argument, 0,                  'e'},
-                        {"bucket_size",   optional_argument, 0,                  'b'},
-                        {"from_config",   required_argument, 0,                  'c'},
-                        {0, 0,                               0,                  0}
+                        {"input_pattern", required_argument, 0,                       'i'},
+                        {"data_dir",      required_argument, 0,                       'd'},
+                        {"reference",     required_argument, 0,                       'x'},
+                        {"output_file",   required_argument, 0,                       's'},
+                        {"metrics_file",  required_argument, 0,                       'e'},
+                        {"bucket_size",   optional_argument, 0,                       'b'},
+                        {"from_config",   required_argument, 0,                       'c'},
+                        {0,               0,                 0,                       0}
                 };
 
         /* getopt_long stores the option index here. */

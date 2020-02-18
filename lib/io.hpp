@@ -99,6 +99,8 @@ public:
      */
     void from_dir(const std::experimental::filesystem::path &dir);
 
+    void from_stdin();
+
     /*
      * Input functions
      */
@@ -235,6 +237,10 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
             _seek_poses.emplace_back(0);
         }
     }
+}
+
+void InterleavedIOScheduler::from_stdin() {
+    // TODO implement reading from stdin
 }
 
 template<typename T>
