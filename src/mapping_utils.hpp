@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include "../lib/external/cpp-subprocess-master/subprocess.hpp"
+#include "../lib/external/subprocess.hpp"
 #include "wrapped_mapper.hpp"
 
 double

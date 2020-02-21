@@ -71,7 +71,7 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
 
-    _suppress_sam = opts.sam_suppress_flag
+    _suppress_sam = opts.sam_suppress_flag;
 
     // command
     std::stringstream command_s;
@@ -116,7 +116,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
 
-    _suppress_sam = configs.get_bool_val("suppress_sam")
+    _suppress_sam = configs.get_bool_val("suppress_sam");
 
     // command
     // TODO: Allow command to come from config

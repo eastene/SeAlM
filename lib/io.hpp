@@ -48,6 +48,8 @@ class InterleavedIOScheduler {
 private:
     // IO handles
     std::vector<std::pair<uint64_t, std::string> > _inputs; // pair of unique file id and file path
+    std::vector<std::shared_ptr<std::istream> > _in_streams;
+    std::vector<std::shared_ptr<std::ostream> > _out_streams;
     std::vector<uint64_t> _seek_poses;
     std::vector<std::string> _outputs;
     uint64_t _read_head;
@@ -62,6 +64,7 @@ private:
     std::chrono::milliseconds _max_wait_time;
 
     // Flags
+    bool _from_stdin; // can only read sequentially,
     std::atomic_bool _reading;
     std::atomic_bool _halt_flag;
     std::atomic_bool _storage_full_flag;
@@ -74,7 +77,7 @@ private:
     std::string _auto_output_ext; // used if modifying extension of input to generate output
 
     // Functors
-    std::function<T(std::ifstream &)> _parsing_fn;
+    std::function<T(std::shared_ptr<std::istream>)> _parsing_fn;
 
     // Private methods
     T parse_single(); // reads a single data point from a single file
@@ -92,14 +95,17 @@ private:
 public:
     InterleavedIOScheduler();
 
-    InterleavedIOScheduler(const std::string &input_pattern, std::function<T(std::ifstream)> &parse_func);
+    InterleavedIOScheduler(const std::string &input_pattern,
+                           std::function<T(std::shared_ptr<std::istream>)> &parse_func);
+
+    ~InterleavedIOScheduler();
 
     /*
      *  Convenience functions
      */
     void from_dir(const std::experimental::filesystem::path &dir);
 
-    void from_stdin();
+    void from_stdin(std::string &out);
 
     /*
      * Input functions
@@ -166,11 +172,12 @@ public:
  */
 
 template<typename T>
-T default_parser(std::ifstream &fin) {
+T default_parser(std::shared_ptr<std::istream> fin) {
     std::string line;
     std::vector<std::string> lines(4);
+    std::cout << fin->rdbuf() << std::endl;
     for (int i = 0; i < 4; i++) {
-        std::getline(fin, line);
+        std::getline(*fin, line);
         lines[i] = line;
     }
 
@@ -197,12 +204,13 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _storage_empty_flag.store(true);
     _reading.store(false);
 
-    _parsing_fn = std::function<T(std::ifstream &)>([](std::ifstream &fin) { return default_parser<T>(fin); });
+    _parsing_fn = std::function<T(std::shared_ptr<std::istream>)>(
+            [](std::shared_ptr<std::istream> fin) { return default_parser<T>(fin); });
 }
 
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
-                                                  std::function<T(std::ifstream)> &parse_func) {
+                                                  std::function<T(std::shared_ptr<std::istream>)> &parse_func) {
     _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
@@ -220,6 +228,24 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_patte
 }
 
 template<typename T>
+InterleavedIOScheduler<T>::~InterleavedIOScheduler() {
+//    if (!_in_streams.empty() && dynamic_cast<std::ifstream *>(_in_streams[0].get()) != nullptr) {
+//        for (const auto &strm : _in_streams) {
+//            dynamic_cast<std::ifstream *>(_in_streams[0].get())->close();
+//        }
+//    }
+//
+//    if (!_out_streams.empty() && dynamic_cast<std::ofstream *>(_out_streams[0].get()) != nullptr) {
+//        for (const auto &strm : _out_streams) {
+//            dynamic_cast<std::ofstream *>(_out_streams[0].get())->close();
+//        }
+//    }
+
+    _in_streams.clear();
+    _out_streams.clear();
+}
+
+template<typename T>
 void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::path &dir) {
     if (!std::experimental::filesystem::is_directory(dir)) {
         std::cout << "Cannot match any files for IO. Expected directory." << std::endl;
@@ -230,32 +256,47 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
     for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(dir)) {
         if (regex_match(fs_obj.path().filename().string(), std::regex(_input_pattern))) {
             auto obj_path_mut = fs_obj.path();
+            // Inputs
             _inputs.emplace_back(std::make_pair(i++, obj_path_mut.string()));
+            std::ifstream tmp_istream(obj_path_mut);
+            _in_streams.emplace_back(std::move(&tmp_istream));
+
+            // Outputs
             _outputs.emplace_back(obj_path_mut.replace_extension(_auto_output_ext));
+            std::ofstream tmp_ostream(obj_path_mut.replace_extension(_auto_output_ext));
+            _out_streams.emplace_back(std::move(&tmp_ostream));
+
+            // Misc
             // TODO: make sure every file extension matches
             _input_ext = fs_obj.path().extension();
             _seek_poses.emplace_back(0);
         }
     }
+    std::cout << _in_streams[_read_head].get()->rdbuf() << std::endl;
 }
 
-void InterleavedIOScheduler::from_stdin() {
-    // TODO implement reading from stdin
+template<typename T>
+void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
+    // read from pipe, cli, etc
+    _from_stdin = true;
+    _inputs.emplace_back(std::make_pair(0, "NULL"));
+    _in_streams.emplace_back(&std::cin);
+    _outputs.emplace_back(out);
+    std::ofstream tmp_ostream(out);
+    _out_streams.emplace_back(std::move(&tmp_ostream));
 }
 
 template<typename T>
 T InterleavedIOScheduler<T>::parse_single() {
-    std::ifstream fin(_inputs[_read_head].second);
-    fin.seekg(_seek_poses[_read_head]);
+    std::cout << _in_streams[_read_head]->rdbuf() << std::endl;
+    T data = _parsing_fn(_in_streams[_read_head]);
 
-    T data = _parsing_fn(fin);
-
-    if (fin.eof()) {
+    if (_in_streams[_read_head]->eof()) {
         throw IOResourceExhaustedException();
     }
 
-    _seek_poses[_read_head] = fin.tellg();
-    fin.close();
+    _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
+    // fin.close();
 
     return data;
 }
@@ -263,19 +304,17 @@ T InterleavedIOScheduler<T>::parse_single() {
 template<typename T>
 std::vector<T> InterleavedIOScheduler<T>::parse_multi(uint64_t n) {
     std::vector<T> data;
-    std::ifstream fin(_inputs[_read_head]);
-    fin.seekg(_seek_poses[_read_head]);
 
     for (uint64_t i = 0; i < n; i++) {
-        data.push_back(_parsing_fn(fin));
+        data.push_back(_parsing_fn(_in_streams[_read_head]));
 
-        if (fin.eof()) {
+        if (_in_streams[_read_head]->eof()) {
             throw IOResourceExhaustedException();
         }
     }
 
-    _seek_poses[_read_head] = fin.tellg();
-    fin.close();
+    _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
+    // fin.close();
 
     return data;
 }
@@ -290,6 +329,9 @@ void InterleavedIOScheduler<T>::read_until_done() {
         } catch (IOResourceExhaustedException &iosee) {
             // remove files after fully read
             _inputs.erase(_inputs.begin() + _read_head);
+            if (dynamic_cast<std::ifstream *>(_in_streams[_read_head].get()) != nullptr)
+                dynamic_cast<std::ifstream *>(_in_streams[_read_head].get())->close();
+            _in_streams.erase(_in_streams.begin() + _read_head);
             _seek_poses.erase(_seek_poses.begin() + _read_head);
         }
 
@@ -320,6 +362,9 @@ void InterleavedIOScheduler<T>::read_until_full() {
             } catch (IOResourceExhaustedException &iosee) {
                 // remove files after fully read
                 _inputs.erase(_inputs.begin() + _read_head);
+                if (dynamic_cast<std::ifstream *>(_in_streams[_read_head].get()) != nullptr)
+                    dynamic_cast<std::ifstream *>(_in_streams[_read_head].get())->close();
+                _in_streams.erase(_in_streams.begin() + _read_head);
                 _seek_poses.erase(_seek_poses.begin() + _read_head);
             }
         }
@@ -344,15 +389,10 @@ void InterleavedIOScheduler<T>::read_until_full() {
 template<typename T>
 void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std::string>> &_buff) {
     if (!_buff.empty()) {
-        // open first file
-        uint64_t curr_file = _buff[0].first;
-        std::ofstream fout(_outputs[curr_file], std::ios::app);
-
         // write each line in buffer, switching files when necessary
         for (const auto &mtpx_line : _buff) {
-            fout << mtpx_line.second;
+            *(_out_streams[mtpx_line.first]) << mtpx_line.second;
         }
-        fout.close();
     }
 }
 
@@ -366,20 +406,10 @@ InterleavedIOScheduler<T>::write_buffer_multiplexed(std::vector<std::pair<uint64
                       return a.first < b.first;
                   });
 
-        // open first file
-        uint64_t curr_file = _multiplexed_buff[0].first;
-        std::ofstream fout(_outputs[curr_file], std::ios::app);
-
         // write each line in buffer, switching files when necessary
         for (const auto &mtpx_line : _multiplexed_buff) {
-            if (mtpx_line.first != curr_file) {
-                curr_file = mtpx_line.first;
-                fout.close();
-                fout.open(_outputs[curr_file], std::ios::app);
-            }
-            fout << mtpx_line.second;
+            *(_out_streams[mtpx_line.first]) << mtpx_line.second;
         }
-        fout.close();
     }
 }
 
@@ -480,8 +510,14 @@ template<typename T>
 InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const InterleavedIOScheduler<T> &other) {
     // IO handles
     _inputs = other._inputs; // pair of unique file id and file path
+    for (const auto &istrm : other._in_streams) {
+        _in_streams.emplace_back(istrm);
+    }
     _seek_poses = other._seek_poses;
     _outputs = other._outputs;
+    for (const auto &ostrm : other._out_streams) {
+        _out_streams.emplace_back(ostrm);
+    }
     _read_head = other._read_head;
 
     // IO buffers
