@@ -291,7 +291,6 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
 
 template<typename T>
 T InterleavedIOScheduler<T>::parse_single() {
-    std::cout << _in_streams[_read_head]->rdbuf() << std::endl;
     T data = _parsing_fn(_in_streams[_read_head]);
 
     if (_in_streams[_read_head]->eof()) {
