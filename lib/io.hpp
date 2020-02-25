@@ -258,13 +258,17 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
             auto obj_path_mut = fs_obj.path();
             // Inputs
             _inputs.emplace_back(std::make_pair(i++, obj_path_mut.string()));
-            std::ifstream tmp_istream(obj_path_mut);
-            _in_streams.emplace_back(std::move(&tmp_istream));
+
+            // open new ifstream (necessary to avoid closing after going out of scope)
+            _in_streams.emplace_back(new std::ifstream);
+            dynamic_cast<std::ifstream *>(_in_streams[i - 1].get())->open(obj_path_mut);
 
             // Outputs
             _outputs.emplace_back(obj_path_mut.replace_extension(_auto_output_ext));
-            std::ofstream tmp_ostream(obj_path_mut.replace_extension(_auto_output_ext));
-            _out_streams.emplace_back(std::move(&tmp_ostream));
+
+            _out_streams.emplace_back(new std::ofstream);
+            dynamic_cast<std::ofstream *>(_out_streams[i - 1].get())->open(
+                    obj_path_mut.replace_extension(_auto_output_ext));
 
             // Misc
             // TODO: make sure every file extension matches
@@ -272,7 +276,6 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
             _seek_poses.emplace_back(0);
         }
     }
-    std::cout << _in_streams[_read_head].get()->rdbuf() << std::endl;
 }
 
 template<typename T>
@@ -282,8 +285,8 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
     _inputs.emplace_back(std::make_pair(0, "NULL"));
     _in_streams.emplace_back(&std::cin);
     _outputs.emplace_back(out);
-    std::ofstream tmp_ostream(out);
-    _out_streams.emplace_back(std::move(&tmp_ostream));
+    _out_streams.emplace_back(new std::ofstream);
+    dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(out);
 }
 
 template<typename T>
