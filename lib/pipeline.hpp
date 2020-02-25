@@ -114,7 +114,7 @@ public:
 
     void set_cache_subsystem(std::shared_ptr<InMemCache<K, V> > &other) { _cache_subsystem = other; }
 
-    void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = other; }
+    void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = std::move(other); }
 
     void set_postprocess_fn(std::function<std::string(T &, V &)> fn) { _postprocess_fn = fn; }
 

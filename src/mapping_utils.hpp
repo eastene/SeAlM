@@ -67,7 +67,6 @@ align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::str
             std::chrono::system_clock::now().time_since_epoch()).count();
 
     auto res = proc.communicate(ss.str().c_str(), ss.str().size());
-    //std::cout << res.first.buf.data();
     uint64_t k = 0;
 
     std::stringstream out_ss;

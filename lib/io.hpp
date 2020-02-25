@@ -77,7 +77,7 @@ private:
     std::string _auto_output_ext; // used if modifying extension of input to generate output
 
     // Functors
-    std::function<T(std::shared_ptr<std::istream>)> _parsing_fn;
+    std::function<T(const std::shared_ptr<std::istream>&)> _parsing_fn;
 
     // Private methods
     T parse_single(); // reads a single data point from a single file
@@ -96,7 +96,7 @@ public:
     InterleavedIOScheduler();
 
     InterleavedIOScheduler(const std::string &input_pattern,
-                           std::function<T(std::shared_ptr<std::istream>)> &parse_func);
+                           std::function<T(const std::shared_ptr<std::istream>&)> &parse_func);
 
     ~InterleavedIOScheduler();
 
@@ -164,7 +164,8 @@ public:
      * Operator Overloads
      */
 
-    InterleavedIOScheduler &operator=(const InterleavedIOScheduler &other);
+    InterleavedIOScheduler &operator=(const InterleavedIOScheduler &&other);
+    InterleavedIOScheduler &operator=(const InterleavedIOScheduler &other) = delete;
 };
 
 /*
@@ -172,7 +173,8 @@ public:
  */
 
 template<typename T>
-T default_parser(std::shared_ptr<std::istream> fin) {
+T default_parser(const std::shared_ptr<std::istream>& fin) {
+    //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
     std::string line;
     std::vector<std::string> lines(4);
     std::cout << fin->rdbuf() << std::endl;
@@ -204,13 +206,13 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _storage_empty_flag.store(true);
     _reading.store(false);
 
-    _parsing_fn = std::function<T(std::shared_ptr<std::istream>)>(
-            [](std::shared_ptr<std::istream> fin) { return default_parser<T>(fin); });
+    _parsing_fn = std::function<T(const std::shared_ptr<std::istream>&)>(
+            [](const std::shared_ptr<std::istream>& fin) { return default_parser<T>(fin); });
 }
 
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
-                                                  std::function<T(std::shared_ptr<std::istream>)> &parse_func) {
+                                                  std::function<T(const std::shared_ptr<std::istream>&)> &parse_func) {
     _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
@@ -229,19 +231,19 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_patte
 
 template<typename T>
 InterleavedIOScheduler<T>::~InterleavedIOScheduler() {
-//    if (!_in_streams.empty() && dynamic_cast<std::ifstream *>(_in_streams[0].get()) != nullptr) {
-//        for (const auto &strm : _in_streams) {
-//            dynamic_cast<std::ifstream *>(_in_streams[0].get())->close();
-//        }
-//    }
-//
-//    if (!_out_streams.empty() && dynamic_cast<std::ofstream *>(_out_streams[0].get()) != nullptr) {
-//        for (const auto &strm : _out_streams) {
-//            dynamic_cast<std::ofstream *>(_out_streams[0].get())->close();
-//        }
-//    }
+    if (!_in_streams.empty() && dynamic_cast<std::ifstream *>(_in_streams[0].get()) != nullptr) {
+        for (const auto &strm : _in_streams) {
+            dynamic_cast<std::ifstream *>(strm.get())->close();
+        }
+    }
 
-    _in_streams.clear();
+    if (!_out_streams.empty() && dynamic_cast<std::ofstream *>(_out_streams[0].get()) != nullptr) {
+        for (const auto &strm : _out_streams) {
+            dynamic_cast<std::ofstream *>(strm.get())->close();
+        }
+    }
+
+    //_in_streams.clear();
     _out_streams.clear();
 }
 
@@ -283,7 +285,7 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
     // read from pipe, cli, etc
     _from_stdin = true;
     _inputs.emplace_back(std::make_pair(0, "NULL"));
-    _in_streams.emplace_back(&std::cin);
+    _in_streams.emplace_back(new std::istream(std::cin.rdbuf()));
     _outputs.emplace_back(out);
     _out_streams.emplace_back(new std::ofstream);
     dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(out);
@@ -298,7 +300,6 @@ T InterleavedIOScheduler<T>::parse_single() {
     }
 
     _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
-    // fin.close();
 
     return data;
 }
@@ -509,17 +510,11 @@ std::vector<std::string> InterleavedIOScheduler<T>::get_input_filenames() {
 }
 
 template<typename T>
-InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const InterleavedIOScheduler<T> &other) {
+InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const InterleavedIOScheduler<T> &&other) {
     // IO handles
     _inputs = other._inputs; // pair of unique file id and file path
-    for (const auto &istrm : other._in_streams) {
-        _in_streams.emplace_back(istrm);
-    }
     _seek_poses = other._seek_poses;
     _outputs = other._outputs;
-    for (const auto &ostrm : other._out_streams) {
-        _out_streams.emplace_back(ostrm);
-    }
     _read_head = other._read_head;
 
     // IO buffers
@@ -532,6 +527,7 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
     _max_wait_time = other._max_wait_time;
 
     // Flags
+    _from_stdin = other._from_stdin;
     _halt_flag.store(other._halt_flag.load());
     _async_fill_flag.store(other._async_fill_flag);
     _storage_full_flag.store(other._storage_full_flag);
@@ -545,6 +541,27 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
 
     // Functors
     _parsing_fn = other._parsing_fn;
+
+    // delete other and open up new streams (cannot be copied)
+    // delete other;
+    if (!_from_stdin) {
+        //
+        for (const auto &f : _inputs) {
+            _in_streams.emplace_back(new std::ifstream);
+            dynamic_cast<std::ifstream *>(_in_streams.back().get())->open(f.second);
+        }
+
+        for (const auto &f : _outputs) {
+            _out_streams.emplace_back(new std::ofstream);
+            dynamic_cast<std::ofstream *>(_out_streams.back().get())->open(f);
+        }
+    } else {
+        // read from pipe, cli, etc
+        _in_streams.emplace_back(new std::istream(std::cin.rdbuf()));
+
+        _out_streams.emplace_back(new std::ofstream);
+        dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(_outputs.front());
+    }
 }
 
 #endif //ALIGNER_CACHE_IO_HPP
