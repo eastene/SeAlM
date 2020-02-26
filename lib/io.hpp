@@ -77,7 +77,7 @@ private:
     std::string _auto_output_ext; // used if modifying extension of input to generate output
 
     // Functors
-    std::function<T(const std::shared_ptr<std::istream>&)> _parsing_fn;
+    std::function<T(const std::shared_ptr<std::istream> &)> _parsing_fn;
 
     // Private methods
     T parse_single(); // reads a single data point from a single file
@@ -96,7 +96,7 @@ public:
     InterleavedIOScheduler();
 
     InterleavedIOScheduler(const std::string &input_pattern,
-                           std::function<T(const std::shared_ptr<std::istream>&)> &parse_func);
+                           std::function<T(const std::shared_ptr<std::istream> &)> &parse_func);
 
     ~InterleavedIOScheduler();
 
@@ -165,6 +165,8 @@ public:
      */
 
     InterleavedIOScheduler &operator=(const InterleavedIOScheduler &&other);
+
+    // don't allow copying (contains streams)
     InterleavedIOScheduler &operator=(const InterleavedIOScheduler &other) = delete;
 };
 
@@ -173,11 +175,11 @@ public:
  */
 
 template<typename T>
-T default_parser(const std::shared_ptr<std::istream>& fin) {
+T default_parser(const std::shared_ptr<std::istream> &fin) {
     //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
     std::string line;
     std::vector<std::string> lines(4);
-    std::cout << fin->rdbuf() << std::endl;
+
     for (int i = 0; i < 4; i++) {
         std::getline(*fin, line);
         lines[i] = line;
@@ -206,13 +208,13 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _storage_empty_flag.store(true);
     _reading.store(false);
 
-    _parsing_fn = std::function<T(const std::shared_ptr<std::istream>&)>(
-            [](const std::shared_ptr<std::istream>& fin) { return default_parser<T>(fin); });
+    _parsing_fn = std::function<T(const std::shared_ptr<std::istream> &)>(
+            [](const std::shared_ptr<std::istream> &fin) { return default_parser<T>(fin); });
 }
 
 template<typename T>
 InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
-                                                  std::function<T(const std::shared_ptr<std::istream>&)> &parse_func) {
+                                                  std::function<T(const std::shared_ptr<std::istream> &)> &parse_func) {
     _max_io_interleave = 1;
     _max_wait_time = std::chrono::milliseconds(5000);
     _read_head = 0;
@@ -285,7 +287,7 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
     // read from pipe, cli, etc
     _from_stdin = true;
     _inputs.emplace_back(std::make_pair(0, "NULL"));
-    _in_streams.emplace_back(new std::istream(std::cin.rdbuf()));
+    _in_streams.emplace_back(&std::cin);
     _outputs.emplace_back(out);
     _out_streams.emplace_back(new std::ofstream);
     dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(out);
@@ -299,7 +301,7 @@ T InterleavedIOScheduler<T>::parse_single() {
         throw IOResourceExhaustedException();
     }
 
-    _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
+    // _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
 
     return data;
 }
@@ -557,8 +559,7 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
         }
     } else {
         // read from pipe, cli, etc
-        _in_streams.emplace_back(new std::istream(std::cin.rdbuf()));
-
+        _in_streams.emplace_back(&std::cin);
         _out_streams.emplace_back(new std::ofstream);
         dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(_outputs.front());
     }
