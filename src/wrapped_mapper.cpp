@@ -75,7 +75,9 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 
     // command
     std::stringstream command_s;
-    command_s << "bowtie2 --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --mm --no-hd -p ";
+    command_s << opts.threads;
+    command_s << " -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;
@@ -121,7 +123,12 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     // command
     // TODO: Allow command to come from config
     std::stringstream command_s;
-    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --mm --no-hd -p ";
+    if (configs.contains("threads"))
+        command_s << configs.get_val("threads");
+    else
+        command_s << "1";
+    command_s << " -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;

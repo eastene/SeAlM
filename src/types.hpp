@@ -23,6 +23,7 @@ struct CLIOptions {
     int verbose_flag = 0;
     int sam_suppress_flag = 0;
     int interleaved = 0;
+    int threads = 3;
 };
 
 
