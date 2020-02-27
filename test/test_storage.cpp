@@ -7,7 +7,7 @@
 
 #include <catch2/catch.hpp>
 
-#include "../src/types.hpp"
+#include "../lib/types.hpp"
 #include "../lib/storage.hpp"
 
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {

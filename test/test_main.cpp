@@ -6,5 +6,5 @@
 
 #include <catch2/catch.hpp>
 
-#include "../src/types.hpp"
+#include "../lib/types.hpp"
 #include "../lib/storage.hpp"

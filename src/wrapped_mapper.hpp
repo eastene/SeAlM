@@ -16,7 +16,7 @@
 
 #include "../lib/cache.hpp"
 #include "../lib/pipeline.hpp"
-#include "types.hpp"
+#include "../lib/types.hpp"
 #include "../lib/io.hpp"
 #include "../lib/config.hpp"
 

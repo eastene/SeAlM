@@ -8,7 +8,7 @@
 #include <variant>
 #include <memory>
 #include <queue>
-#include "../src/types.hpp"
+#include "types.hpp"
 #include "cache.hpp"
 #include "io.hpp"
 

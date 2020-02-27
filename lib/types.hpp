@@ -8,7 +8,6 @@
 #include <vector>
 #include <string>
 #include <chrono>
-#include <variant>
 
 
 struct CLIOptions {

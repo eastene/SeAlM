@@ -6,7 +6,6 @@
 #include <tuple>
 #include <iostream>
 #include <experimental/filesystem>
-#include <regex>
 #include "wrapped_mapper.hpp"
 #include "mapping_utils.hpp"
 #include "prep_experiment.hpp"
