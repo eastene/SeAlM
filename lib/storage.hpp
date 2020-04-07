@@ -13,7 +13,9 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+
 #include "logging.hpp"
+#include "signaling.hpp"
 
 /*
  * Storage Specific Exceptions
@@ -127,7 +129,7 @@ public:
     void kill() { _alive = false; } // stop all read/writes pending if in deadlock, puts store in unsafe state
 
     // TODO: implement deadlock recovery
-    bool recover() { if (!_alive) _alive = true; }
+    bool recover() { if (!_alive) _alive = true; return _alive;}
 
     /*
      * State Descriptors

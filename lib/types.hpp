@@ -16,6 +16,7 @@ struct CLIOptions {
     std::string reference;
     std::string output_file;
     std::string metrics_file = "metrics.log";
+    std::string aligner = "bowtie2";
     uint32_t batch_size = 50000;
     int manager_type = 0;
     int cache_type = 0;

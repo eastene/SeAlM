@@ -74,18 +74,29 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
 
     // command
     std::stringstream command_s;
-    command_s << "bowtie2 --mm --no-hd -p ";
-    command_s << opts.threads;
-    command_s << " -";
-    command_s << _input_type;
-    command_s << " -x ";
-    command_s << _reference;
-    if (opts.interleaved)
-        command_s << " --interleaved -";
-    else
-        command_s << " -U -";
-    _command = command_s.str();
-
+    if (opts.aligner == "seal") {
+        command_s << "seal threads=";
+        command_s << opts.threads;
+        command_s << " out=stdout.fq";
+        command_s << " ref=";
+        command_s << _reference;
+        if (opts.interleaved)
+            command_s << " interleaved=t";
+        command_s << " in=stdin.fq";
+        _command = command_s.str();
+    } else {
+        command_s << "bowtie2 --mm --no-hd -p ";
+        command_s << opts.threads;
+        command_s << " -";
+        command_s << _input_type;
+        command_s << " -x ";
+        command_s << _reference;
+        if (opts.interleaved)
+            command_s << " --interleaved -";
+        else
+            command_s << " -U -";
+        _command = command_s.str();
+    }
 }
 
 WrappedMapper::WrappedMapper(ConfigParser &configs) {
@@ -119,24 +130,40 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
 
     _suppress_sam = configs.get_bool_val("suppress_sam");
 
-    // command
-    // TODO: Allow command to come from config
+    // aligner process command
     std::stringstream command_s;
-    command_s << "bowtie2 --mm --no-hd -p ";
-    if (configs.contains("threads"))
-        command_s << configs.get_val("threads");
-    else
-        command_s << "1";
-    command_s << " -";
-    command_s << _input_type;
-    command_s << " -x ";
-    command_s << _reference;
-    if (configs.get_bool_val("interleaved"))
-        command_s << " --interleaved -";
-    else
-        command_s << " -U -";
-    _command = command_s.str();
-
+    // allow user to specify custom command
+    if (configs.contains("command")) {
+        command_s << configs.get_val("command");
+    } else {
+        // supported commands for certain aligners
+        if (configs.get_val("aligner") == "seal") {
+            command_s << "seal threads=";
+            command_s << configs.get_val("threads");
+            command_s << " out=stdout.fq";
+            command_s << " ref=";
+            command_s << _reference;
+            if (configs.get_bool_val("interleaved"))
+                command_s << " interleaved=t";
+            command_s << " in=stdin.fq";
+            _command = command_s.str();
+        } else {
+            command_s << "bowtie2 --mm --no-hd -p ";
+            if (configs.contains("threads"))
+                command_s << configs.get_val("threads");
+            else
+                command_s << "1";
+            command_s << " -";
+            command_s << _input_type;
+            command_s << " -x ";
+            command_s << _reference;
+            if (configs.get_bool_val("interleaved"))
+                command_s << " --interleaved -";
+            else
+                command_s << " -U -";
+            _command = command_s.str();
+        }
+    }
 }
 
 void WrappedMapper::run_alignment() {
@@ -145,7 +172,7 @@ void WrappedMapper::run_alignment() {
     double elapsed_time = 0.0;
     long this_bucket = 0;
 
-    std::vector<std::string> alignments (_bucket_size);
+    std::vector<std::string> alignments(_bucket_size);
     initialize_alignment();
 
     std::ofstream mfile;
@@ -153,7 +180,7 @@ void WrappedMapper::run_alignment() {
         mfile.open(_metric_file);
         mfile << "# Num_Files:" << _pipe.get_filenames().size() << std::endl;
         mfile << "# File_Names:";
-        for (const auto &infile : _pipe.get_filenames()){
+        for (const auto &infile : _pipe.get_filenames()) {
             mfile << infile << ",";
         }
         mfile << std::endl;
@@ -172,7 +199,8 @@ void WrappedMapper::run_alignment() {
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     try {
         while (true) {
-            long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+            long batch_start = std::chrono::duration_cast<Mills>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
 
             this_bucket = next_bucket.size();
             _reads_seen += _bucket_size;
@@ -180,17 +208,16 @@ void WrappedMapper::run_alignment() {
             read_future = _pipe.read_async();
 
             //alignments.resize(next_bucket.size());
-            auto write_future = _pipe.write_async(alignments);
 
             elapsed_time = call_aligner(_command, next_bucket, &alignments);
 
-            write_future.wait();
             next_bucket = read_future.get();
-          
+
             if (!_suppress_sam)
                 auto write_future = _pipe.write_async(alignments);
-          
-            long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+            long batch_end = std::chrono::duration_cast<Mills>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
 
             // write_future.wait();
             // update state
@@ -220,7 +247,7 @@ void WrappedMapper::run_alignment() {
             std::cout << "  Reads aligned this batch: " << this_bucket << "\n";
             std::cout << _pipe;
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
-            std::cout << "  Instant Throughput: " << (_bucket_size / ((batch_end - batch_start) / 1000.00)) << " r/s\n";
+            std::cout << "  Instant Throughput: " << (_bucket_size / elapsed_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
 
             //write_future.wait();
@@ -230,7 +257,8 @@ void WrappedMapper::run_alignment() {
         _align_calls++;
         _reads_aligned += alignments.size();
 
-        long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+        long batch_start = std::chrono::duration_cast<Mills>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
         if (!_suppress_sam) {
             auto write_future = _pipe.write_async(alignments);
             write_future.wait();
@@ -250,7 +278,8 @@ void WrappedMapper::run_alignment() {
 
     if (!_metric_file.empty()) {
         mfile.open(_metric_file, std::ios::app);
-        mfile << "# config:" << _config_file << " total_reads:" << _reads_seen << " runtime:" << _total_time << std::endl;
+        mfile << "# config:" << _config_file << " total_reads:" << _reads_seen << " runtime:" << _total_time
+              << std::endl;
     }
 
     std::cout << "===== COMPLETE =====" << std::endl;

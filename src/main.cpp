@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
                         {"interleaved",   no_argument,       &opts.interleaved,       1},
                         /* These options don’t set a flag.
                            We distinguish them by their indices. */
+                        {"aligner",       required_argument, 0,                       'a'},
                         {"input_pattern", required_argument, 0,                       'i'},
                         {"data_dir",      required_argument, 0,                       'd'},
                         {"reference",     required_argument, 0,                       'x'},
@@ -49,6 +50,11 @@ int main(int argc, char **argv) {
                 if (optarg)
                     printf(" with arg %s", optarg);
                 printf("\n");
+                break;
+
+            case 'a':
+                if (optarg)
+                    opts.aligner = optarg;
                 break;
 
             case 'i':

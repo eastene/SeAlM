@@ -173,8 +173,8 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
      */
 
     std::shared_ptr<InMemCache<std::string, std::string> > c;
-    if (cfp.contains("cache")) {
-        std::string cache = cfp.get_val("cache");
+    if (cfp.contains("cache_policy")) {
+        std::string cache = cfp.get_val("cache_policy");
         if (cache == "lru") {
             c = std::make_shared<LRUCache<std::string, std::string> >();
         } else if (cache == "mru") {
