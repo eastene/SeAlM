@@ -13,24 +13,27 @@ int main(int argc, char **argv) {
         static struct option long_options[] =
                 {
                         /* These options set a flag. */
-                        {"verbose",       no_argument,       &opts.verbose_flag, 1},
-                        {"quiet",         no_argument,       &opts.verbose_flag, 0},
+                        {"verbose",       no_argument,       &opts.verbose_flag,      1},
+                        {"quiet",         no_argument,       &opts.verbose_flag,      0},
+                        {"suppress_sam",  no_argument,       &opts.sam_suppress_flag, 1},
+                        {"interleaved",   no_argument,       &opts.interleaved,       1},
                         /* These options don’t set a flag.
                            We distinguish them by their indices. */
-                        {"input_pattern", required_argument, 0,                  'i'},
-                        {"data_dir",      required_argument, 0,                  'd'},
-                        {"reference",     required_argument, 0,                  'x'},
-                        {"output_file",   required_argument, 0,                  's'},
-                        {"metrics_file",  required_argument, 0,                  'e'},
-                        {"bucket_size",   optional_argument, 0,                  'b'},
-                        {"from_config",   required_argument, 0,                  'c'},
-                        {0, 0,                               0,                  0}
+                        {"input_pattern", required_argument, 0,                       'i'},
+                        {"data_dir",      required_argument, 0,                       'd'},
+                        {"reference",     required_argument, 0,                       'x'},
+                        {"output_file",   required_argument, 0,                       's'},
+                        {"metrics_file",  required_argument, 0,                       'e'},
+                        {"bucket_size",   optional_argument, 0,                       'b'},
+                        {"from_config",   required_argument, 0,                       'c'},
+                        {"threads",       required_argument, 0,                       'p'},
+                        {0, 0,                               0,                       0}
                 };
 
         /* getopt_long stores the option index here. */
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "i:x:s:b:c",
+        c = getopt_long(argc, argv, "i:d:x:s:e:b:c:p",
                         long_options, &option_index);
 
         /* Detect the end of the options. */
@@ -86,6 +89,13 @@ int main(int argc, char **argv) {
             case 'c':
                 if (optarg)
                     cfp.parse(optarg);
+                break;
+
+            case 'p':
+                if (optarg)
+                    opts.threads = std::stoi(optarg);
+                else
+                    opts.threads = 1;
                 break;
 
             case '?':

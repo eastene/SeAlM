@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(aligner_cache)
+project(SeAlM)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
@@ -32,10 +32,10 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(aligner_cache src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp src/types.hpp lib/storage.hpp lib/io.hpp lib/config.hpp lib/logging.hpp src/prep_experiment.hpp lib/signaling.hpp)
-add_executable(test_aligner_cache test/test_main.cpp test/test_storage.cpp lib/storage.hpp test/test_cache.cpp lib/io.hpp lib/logging.hpp test/test_io.cpp test/test_pipeline.cpp test/test_config.cpp)
+add_executable(SeAlM src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp lib/types.hpp lib/storage.hpp lib/io.hpp lib/config.hpp lib/logging.hpp src/prep_experiment.hpp lib/signaling.hpp)
+add_executable(test_SeAlM test/test_main.cpp test/test_storage.cpp lib/storage.hpp test/test_cache.cpp lib/io.hpp lib/logging.hpp test/test_io.cpp test/test_pipeline.cpp test/test_config.cpp)
 
-target_link_libraries(aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs)
-target_link_libraries(test_aligner_cache ${CMAKE_THREAD_LIBS_INIT} stdc++fs Catch2)
+target_link_libraries(SeAlM ${CMAKE_THREAD_LIBS_INIT} stdc++fs)
+target_link_libraries(test_SeAlM ${CMAKE_THREAD_LIBS_INIT} stdc++fs Catch2)
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")

@@ -12,7 +12,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <random>
-#include "../src/types.hpp"
+#include "types.hpp"
 #include "signaling.hpp"
 
 

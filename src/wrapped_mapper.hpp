@@ -16,7 +16,7 @@
 
 #include "../lib/cache.hpp"
 #include "../lib/pipeline.hpp"
-#include "types.hpp"
+#include "../lib/types.hpp"
 #include "../lib/io.hpp"
 #include "../lib/config.hpp"
 
@@ -36,6 +36,7 @@ private:
     uint32_t _qual_thresh;
     int _cache_type;
     int _manager_type;
+    bool _suppress_sam;
 
     // derived parameters
     char _input_type; // if input_format in ['.fasta', '.fa'] else 'q'

@@ -8,7 +8,6 @@
 #include <vector>
 #include <string>
 #include <chrono>
-#include <variant>
 
 
 struct CLIOptions {
@@ -21,6 +20,9 @@ struct CLIOptions {
     int manager_type = 0;
     int cache_type = 0;
     int verbose_flag = 0;
+    int sam_suppress_flag = 0;
+    int interleaved = 0;
+    int threads = 3;
 };
 
 

@@ -246,6 +246,12 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     if (cfp.contains("data_dir"))
         io.from_dir(cfp.get_val("data_dir"));
+    else if (cfp.get_bool_val("stdin"))
+    {
+        std::string out = "OUT.sam";
+        io.from_stdin(out);
+    }
+
 
     pipe->set_io_subsystem(io);
 

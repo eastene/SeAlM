@@ -6,7 +6,6 @@
 #include <tuple>
 #include <iostream>
 #include <experimental/filesystem>
-#include <regex>
 #include "wrapped_mapper.hpp"
 #include "mapping_utils.hpp"
 #include "prep_experiment.hpp"
@@ -71,13 +70,20 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
 
+    _suppress_sam = opts.sam_suppress_flag;
+
     // command
     std::stringstream command_s;
-    command_s << "bowtie2 --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --mm --no-hd -p ";
+    command_s << opts.threads;
+    command_s << " -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;
-    command_s << " -U -";
+    if (opts.interleaved)
+        command_s << " --interleaved -";
+    else
+        command_s << " -U -";
     _command = command_s.str();
 
 }
@@ -111,14 +117,24 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
 
+    _suppress_sam = configs.get_bool_val("suppress_sam");
+
     // command
     // TODO: Allow command to come from config
     std::stringstream command_s;
-    command_s << "bowtie2 --reorder --mm --no-hd -p 3 -";
+    command_s << "bowtie2 --mm --no-hd -p ";
+    if (configs.contains("threads"))
+        command_s << configs.get_val("threads");
+    else
+        command_s << "1";
+    command_s << " -";
     command_s << _input_type;
     command_s << " -x ";
     command_s << _reference;
-    command_s << " -U -";
+    if (configs.get_bool_val("interleaved"))
+        command_s << " --interleaved -";
+    else
+        command_s << " -U -";
     _command = command_s.str();
 
 }
@@ -170,7 +186,10 @@ void WrappedMapper::run_alignment() {
 
             write_future.wait();
             next_bucket = read_future.get();
-
+          
+            if (!_suppress_sam)
+                auto write_future = _pipe.write_async(alignments);
+          
             long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
             // write_future.wait();
@@ -212,8 +231,10 @@ void WrappedMapper::run_alignment() {
         _reads_aligned += alignments.size();
 
         long batch_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-        auto write_future = _pipe.write_async(alignments);
-        write_future.wait();
+        if (!_suppress_sam) {
+            auto write_future = _pipe.write_async(alignments);
+            write_future.wait();
+        }
         long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         _process_time += (batch_end - batch_start) / 1000.00;

@@ -6,7 +6,7 @@
 #include <experimental/filesystem>
 
 #include "../lib/io.hpp"
-#include "../src/types.hpp"
+#include "../lib/types.hpp"
 
 TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
     InterleavedIOScheduler<Read> io;
