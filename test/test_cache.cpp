@@ -1,7 +1,8 @@
 //
 // Created by evan on 5/2/19.
 //
-#include
+
+#define CATCH_CONFIG_ENABLE_BENCHMARKING
 #include <catch2/catch.hpp>
 
 #include "../lib/cache.hpp"
@@ -25,13 +26,16 @@ TEST_CASE("dummy cache initializes correctly" "[DummyCache]") {
 }
 
 TEST_CASE("lru cache initializes and evicts correctly" "[LRUCache]") {
+    int cache_size = 1000;
     LRUCache<std::string, std::string> cache;
+    cache.set_max_size(cache_size);
+
     std::string key = "test_key";
     std::string value = "test_value";
 
     REQUIRE(cache.hits() == 0);
     REQUIRE(cache.hit_rate() == 0);
-    REQUIRE(cache.capacity() == 900000);
+    REQUIRE(cache.capacity() == cache_size);
 
     SECTION("lru cache stores single value correctly") {
         cache.insert(key, value);
@@ -66,7 +70,10 @@ TEST_CASE("lru cache initializes and evicts correctly" "[LRUCache]") {
 }
 
 TEST_CASE("mru cache evicts correctly" "[MRUCache]") {
+    int cache_size = 1000;
     MRUCache<std::string, std::string> cache;
+    cache.set_max_size(cache_size);
+
     std::string key = "test_key";
     std::string value = "test_value";
 
@@ -83,4 +90,46 @@ TEST_CASE("mru cache evicts correctly" "[MRUCache]") {
         REQUIRE(cache.find(first_key) != cache.end());
         REQUIRE(cache.find(last_key) == cache.end());
     }
+}
+
+TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
+    int cache_size = 10000;
+    LRUCache<std::string, std::string> cache;
+    cache.set_max_size(cache_size);
+    std::string key = "test_key";
+    std::string value = "test_value";
+
+    BENCHMARK("Insert Until Full") {
+        for (int i = 0; i < cache_size; i++) {
+            cache.insert(key + std::to_string(i), value + std::to_string(i));
+        }
+    };
+
+    BENCHMARK("Insert After Full") {
+         for (int i = 0; i < cache_size; i++) {
+             cache.insert(key + std::to_string(i), value + std::to_string(i));
+         }
+    };
+
+    BENCHMARK("Insert After Full - No Evict and Trim") {
+       for (int i = 0; i < cache_size; i++) {
+           cache.insert_no_evict(key + std::to_string(i), value + std::to_string(i));
+       }
+       cache.trim();
+    };
+
+    cache.clear();
+    key = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC";
+    BENCHMARK("Insert long key, short value"){
+        for (int i = 0; i < cache_size; i++) {
+            cache.insert(key + std::to_string(i), value + std::to_string(i));
+        }
+    };
+
+    value = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC ++#+#++$#$+#+#++#+##++#+#+@+#$+++@++!@+#+!+#++$%++^^+&+%^+$+%#+%+@+$@+#$+@+#$+!++++@#$_@#$_@))^$%__@";
+    BENCHMARK("Insert long key, long value"){
+         for (int i = 0; i < cache_size; i++) {
+             cache.insert(key + std::to_string(i), value + std::to_string(i));
+         }
+    };
 }

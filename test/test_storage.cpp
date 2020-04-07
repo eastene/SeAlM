@@ -12,7 +12,8 @@
 
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<std::pair<uint64_t, Read>> bb (4, 50000);
+    BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    bb.set_bucket_size(50000);
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -90,7 +91,8 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
 
 TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
-    BufferedBuckets<std::pair<uint64_t, Read>> bb (4, 50000);
+    BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    bb.set_bucket_size(50000);
 
     r[0] = "@test";
     r[1] = "AAGGC";

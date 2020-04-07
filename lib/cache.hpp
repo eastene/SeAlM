@@ -86,6 +86,8 @@ public:
 
     virtual V &operator[](K &key) = 0;
 
+    virtual void clear() = 0;
+
     // TODO: find more consistent way to do this?
     virtual void fetch_into(const K &key, V *buff) = 0;
 
@@ -121,6 +123,8 @@ public:
     V &at(const K &key) override;
 
     V &operator[](K &key) override;
+
+    void clear() {};
 
     void fetch_into(const K &key, V *buff) override;
 };
@@ -187,6 +191,8 @@ public:
 
     V &operator[](K &key) override;
 
+    void clear() override;
+
     void fetch_into(const K &key, V *buff) override;
 };
 
@@ -222,7 +228,6 @@ void LRUCache<K, V>::insert(const K &key, const V &value) {
         // only change recency of read on access, not on addition
         this->_keys++;
     }
-
 }
 
 template<typename K, typename V>
@@ -237,7 +242,6 @@ void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
         // only change recency of read on access, not on addition
         this->_keys++;
     }
-
 }
 
 template<typename K, typename V>
@@ -281,11 +285,18 @@ V &LRUCache<K, V>::operator[](K &key) {
 }
 
 template<typename K, typename V>
+void LRUCache<K, V>::clear() {
+    _order.clear();
+    _order_lookup.clear();
+    this->_cache_index.clear();
+}
+
+template<typename K, typename V>
 void LRUCache<K, V>::fetch_into(const K &key, V *buff) {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
     auto find_ptr = this->_cache_index.find(key);
     find_ptr != this->_cache_index.end() ? this->_hits++ : this->_misses++;
-    if (find_ptr != this->end()){
+    if (find_ptr != this->end()) {
         _order.erase(_order_lookup[key]);
         _order.emplace_front(key);
         _order_lookup.insert_or_assign(key, _order.begin());
@@ -346,77 +357,16 @@ void MRUCache<K, V>::trim() {
 }
 
 
-///*
-// * CHAIN DECAY CACHE
-// */
-//
-//
-//template<typename K, typename V>
-//class ChainDecayCache : public LRUCache<K, V> {
-//protected:
-//    // Decay parameters
-//    float lambda;
-//    std::default_random_engine generator;
-//    std::bernoulli_distribution keep_prob;
-//
-//public:
-//
-//    ChainDecayCache() : LRUCache<K, V>() {
-//        lambda = 0.8;
-//        std::bernoulli_distribution new_prob(0.99);
-//        keep_prob.param(new_prob.param());
-//    };
-//
-//    void insert(const K &key, const V &value) override;
-//
-//    void insert_no_evict(const K &key, const V &value) override;
-//
-//    void update(int event) {
-//        if (event == 0) {
-//            // EOC Event
-//            std::bernoulli_distribution new_prob(0.99);
-//            keep_prob.param(new_prob.param());
-//        } else if (event == 1) {
-//            // EOB event
-//            std::bernoulli_distribution new_prob(keep_prob.p() * lambda);
-//            keep_prob.param(new_prob.param());
-//        }
-//    };
-//
-//};
-//
-//template<typename K, typename V>
-//void ChainDecayCache<K, V>::insert(const K &key, const V &value) {
-//    if (keep_prob(generator)) {
-//        std::lock_guard<std::mutex> lock(this->_cache_mutex);
-//        if (this->_cache_index.find(key) == this->_cache_index.end()) {
-//            if (this->_cache_index.size() >= this->_max_cache_size) {
-//                this->evict();
-//            }
-//            this->_order.emplace_front(key);
-//            this->_order_lookup.emplace(key, this->_order.begin());
-//            this->_cache_index.emplace(key, value);
-//
-//            // only change recency of read on access, not on addition
-//            this->_keys++;
-//        }
-//    }
-//}
-//
-//template<typename K, typename V>
-//void ChainDecayCache<K, V>::insert_no_evict(const K &key, const V &value) {
-//    if (keep_prob(generator)) {
-//        std::lock_guard<std::mutex> lock(this->_cache_mutex);
-//        if (this->_cache_index.find(key) == this->_cache_index.end()) {
-//            this->_order.emplace_front(key);
-//            this->_order_lookup.emplace(key, this->_order.begin());
-//            this->_cache_index.emplace(key, value);
-//
-//            // only change recency of read on access, not on addition
-//            this->_keys++;
-//        }
-//    }
-//}
+/*
+ * BLOOM FILTER ENHANCED CACHE
+ */
+
+template<typename K, typename V>
+class BFECache : public LRUCache<K, V> {
+private:
+    std::vector<bool> bits;
+
+};
 
 
 #endif //ALIGNER_CACHE_CACHE_HPP

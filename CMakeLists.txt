@@ -15,7 +15,7 @@ include(ExternalProject)
 
 set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
 
-ExternalProject_Add(catch2-test
+ExternalProject_Add(Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2
         GIT_TAG v2.11.3
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
@@ -38,7 +38,7 @@ add_executable(test_SeAlM test/test_main.cpp test/test_storage.cpp lib/storage.h
 
 add_dependencies(SeAlM cpp-subprocess)
 target_link_libraries(SeAlM ${CMAKE_THREAD_LIBS_INIT} stdc++fs)
-add_dependencies(test_SeAlM catch2-test )
-target_link_libraries(test_SeAlM ${CMAKE_THREAD_LIBS_INIT} stdc++fs Catch2)
+add_dependencies(test_SeAlM Catch2 cpp-subprocess)
+target_link_libraries(test_SeAlM ${CMAKE_THREAD_LIBS_INIT} stdc++fs)
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")

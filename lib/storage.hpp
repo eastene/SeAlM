@@ -334,7 +334,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         if (this->_chain_switch == ChainSwitch::RANDOM) {
             this->notify(0);
             // RANDOM CHAIN SWITCHING
-            log_info("Switching chains.");
+            log_debug("Switching chains.");
             uint16_t r = rand() % this->_table_width;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
                 if (this->_chain_lengths[r] != 0) {
@@ -346,7 +346,7 @@ std::unique_ptr<std::vector<T>> BufferedBuckets<T>::next_bucket() {
         } else if (_buckets[this->_current_chain].empty()) {
             this->notify(0);
             // STRUCTURED CHAIN SWITCHING
-            log_info("Switching chains.");
+            log_debug("Switching chains.");
             uint16_t max_elem = 0;
             for (uint32_t i = 0; i < this->_chain_lengths.size(); i++) {
                 if (this->_chain_lengths[i] > max_elem) {

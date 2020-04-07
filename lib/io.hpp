@@ -19,15 +19,17 @@
  * IO EXCEPTIONS
  */
 
+// failure of any assumptions IO module requires (e.g. input files exist)
+class IOAssumptionFailedException : public std::exception {
+};
+
 class IOResourceExhaustedException : public std::exception {
 };
 
 class RequestToEmptyStorageException : public std::exception {
 };
 
-
 class TimeoutException : public std::exception {
-
 };
 
 /*
@@ -210,6 +212,8 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
 
     _parsing_fn = std::function<T(const std::shared_ptr<std::istream> &)>(
             [](const std::shared_ptr<std::istream> &fin) { return default_parser<T>(fin); });
+
+    log_debug("Default IO module initiated.");
 }
 
 template<typename T>
@@ -229,32 +233,40 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_patte
     _reading.store(false);
 
     _parsing_fn = parse_func;
+
+    log_debug("IO module initiated.");
 }
 
 template<typename T>
 InterleavedIOScheduler<T>::~InterleavedIOScheduler() {
+    log_debug("Deleting IO module.");
     if (!_in_streams.empty() && dynamic_cast<std::ifstream *>(_in_streams[0].get()) != nullptr) {
+        log_debug("Closing input streams.");
         for (const auto &strm : _in_streams) {
             dynamic_cast<std::ifstream *>(strm.get())->close();
         }
     }
 
     if (!_out_streams.empty() && dynamic_cast<std::ofstream *>(_out_streams[0].get()) != nullptr) {
+        log_debug("Closing output streams.");
         for (const auto &strm : _out_streams) {
             dynamic_cast<std::ofstream *>(strm.get())->close();
         }
     }
 
-    //_in_streams.clear();
+    _in_streams.clear();
     _out_streams.clear();
 }
 
 template<typename T>
 void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::path &dir) {
+    // throw error if data directory is not a directory
     if (!std::experimental::filesystem::is_directory(dir)) {
-        std::cout << "Cannot match any files for IO. Expected directory." << std::endl;
-        return;
+        log_error(dir.string() + " is not a directory or does not exist.");
+        throw IOAssumptionFailedException();
     }
+
+    log_info("Looking for files matching " + _input_pattern + " in " + dir.string());
 
     uint64_t i = 0;
     for (const auto &fs_obj : std::experimental::filesystem::directory_iterator(dir)) {
@@ -275,10 +287,24 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
                     obj_path_mut.replace_extension(_auto_output_ext));
 
             // Misc
-            // TODO: make sure every file extension matches
+            // TODO: make sure every file extension matches pattern
             _input_ext = fs_obj.path().extension();
             _seek_poses.emplace_back(0);
         }
+    }
+    // safety checks
+    assert(i == _inputs.size());
+    assert(i == _in_streams.size());
+    assert(i == _outputs.size());
+    assert(i == _out_streams.size());
+    assert(i == _seek_poses.size());
+
+    log_info(std::to_string(i) + " files matching pattern found.");
+
+    // throw error if no files matching pattern are found
+    if (_inputs.empty()) {
+        log_error("Cannot find any files matching " + _input_pattern + " for IO.");
+        throw IOAssumptionFailedException();
     }
 }
 
@@ -298,10 +324,11 @@ T InterleavedIOScheduler<T>::parse_single() {
     T data = _parsing_fn(_in_streams[_read_head]);
 
     if (_in_streams[_read_head]->eof()) {
+        log_info("File " + _inputs[_read_head].second + " exhausted.");
         throw IOResourceExhaustedException();
     }
 
-    // _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
+    _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
 
     return data;
 }
@@ -314,18 +341,19 @@ std::vector<T> InterleavedIOScheduler<T>::parse_multi(uint64_t n) {
         data.push_back(_parsing_fn(_in_streams[_read_head]));
 
         if (_in_streams[_read_head]->eof()) {
+            log_info("File " + _inputs[_read_head] + " exhausted.");
             throw IOResourceExhaustedException();
         }
     }
 
     _seek_poses[_read_head] = _in_streams[_read_head]->tellg();
-    // fin.close();
 
     return data;
 }
 
 template<typename T>
 void InterleavedIOScheduler<T>::read_until_done() {
+    log_info("Beginning to read until all inputs exhausted.");
     while (!_halt_flag) {
         // parse data point(s) in round robin fashion until all files exhausted
         try {
@@ -333,6 +361,7 @@ void InterleavedIOScheduler<T>::read_until_done() {
             _storage_subsystem->insert(std::make_pair(_inputs[_read_head].first, parse_single()));
         } catch (IOResourceExhaustedException &iosee) {
             // remove files after fully read
+            log_debug("Closing " + _inputs[_read_head].second + " and removing associated resources.");
             _inputs.erase(_inputs.begin() + _read_head);
             if (dynamic_cast<std::ifstream *>(_in_streams[_read_head].get()) != nullptr)
                 dynamic_cast<std::ifstream *>(_in_streams[_read_head].get())->close();
@@ -346,8 +375,14 @@ void InterleavedIOScheduler<T>::read_until_done() {
 
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
+            // safety checks, make sure all input streams closed correctly
+            assert(_inputs.empty());
+            assert(_in_streams.empty());
+            assert(_seek_poses.empty());
+            // flush all remaining data to storage module
             _storage_subsystem->flush();
             _halt_flag = true;
+            log_info("Reading finished, all inputs exhausted.");
             //throw IOResourceExhaustedException();
         }
     }
@@ -359,7 +394,7 @@ void InterleavedIOScheduler<T>::read_until_full() {
     // TODO: fix deadlock caused by flushing an empty buffer then trying to read from it.
     while (!_halt_flag) {
         while (!_storage_empty_flag) {};
-        log_info("Storage empty - reading until full.");
+        log_info("Storage empty, reading until full.");
         // parse data point(s) in round robin fashion until all files exhausted
         while (!_storage_subsystem->full() && !_inputs.empty()) {
             try {
@@ -373,7 +408,7 @@ void InterleavedIOScheduler<T>::read_until_full() {
                 _seek_poses.erase(_seek_poses.begin() + _read_head);
             }
         }
-        log_info("Storage full - requests enabled.");
+        log_info("Storage full, requests enabled.");
 
         _storage_full_flag.store(true);
         _storage_empty_flag.store(false);
@@ -436,6 +471,7 @@ bool InterleavedIOScheduler<T>::begin_reading() {
 
 template<typename T>
 bool InterleavedIOScheduler<T>::stop_reading() {
+    log_info("Reading stopped by external call.");
     // stop reading daemon
     _halt_flag = true;
     _reading = false;
@@ -448,6 +484,7 @@ std::unique_ptr<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>
         if (!_storage_subsystem->empty() || !_inputs.empty()) { // only wait for buckets to fill if async
             return _storage_subsystem->next_bucket();
         } else {
+            log_debug("Bucket storage empty. Stopping bucket requests.");
             throw RequestToEmptyStorageException();
         }
     } else {
@@ -513,6 +550,7 @@ std::vector<std::string> InterleavedIOScheduler<T>::get_input_filenames() {
 
 template<typename T>
 InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const InterleavedIOScheduler<T> &&other) {
+    log_debug("Moving IO module.");
     // IO handles
     _inputs = other._inputs; // pair of unique file id and file path
     _seek_poses = other._seek_poses;
@@ -563,6 +601,7 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
         _out_streams.emplace_back(new std::ofstream);
         dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(_outputs.front());
     }
+    log_debug("IO module moved.");
 }
 
 #endif //ALIGNER_CACHE_IO_HPP

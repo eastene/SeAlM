@@ -244,8 +244,14 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     if (cfp.contains("output_ext"))
         io.set_out_file_ext(cfp.get_val("output_ext"));
 
-    if (cfp.contains("data_dir"))
-        io.from_dir(cfp.get_val("data_dir"));
+    if (cfp.contains("data_dir")) {
+        try {
+            io.from_dir(cfp.get_val("data_dir"));
+        } catch (IOAssumptionFailedException &e) {
+            std::cout << "No files to align. Stopping." << std::endl;
+            exit(0);
+        }
+    }
     else if (cfp.get_bool_val("stdin"))
     {
         std::string out = "OUT.sam";
