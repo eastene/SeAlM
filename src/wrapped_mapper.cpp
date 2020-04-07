@@ -180,14 +180,16 @@ void WrappedMapper::run_alignment() {
             read_future = _pipe.read_async();
 
             //alignments.resize(next_bucket.size());
+            auto write_future = _pipe.write_async(alignments);
 
             elapsed_time = call_aligner(_command, next_bucket, &alignments);
 
+            write_future.wait();
             next_bucket = read_future.get();
-
+          
             if (!_suppress_sam)
                 auto write_future = _pipe.write_async(alignments);
-
+          
             long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
             // write_future.wait();
@@ -218,7 +220,7 @@ void WrappedMapper::run_alignment() {
             std::cout << "  Reads aligned this batch: " << this_bucket << "\n";
             std::cout << _pipe;
             std::cout << "Avg Throughput: " << (_reads_seen / _align_time) << " r/s\n";
-            std::cout << "  Instant Throughput: " << (_bucket_size / elapsed_time) << " r/s\n";
+            std::cout << "  Instant Throughput: " << (_bucket_size / ((batch_end - batch_start) / 1000.00)) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
 
             //write_future.wait();

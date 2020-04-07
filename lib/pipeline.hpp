@@ -219,52 +219,66 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
         _multiplexer.resize(next_bucket->size());
         // extract data (separate from file id) and compress
         uint64_t i = 0;
-        for (const auto &mtpx_item : *next_bucket) {
-            // extract data
-            _current_bucket[i] = mtpx_item.second;
+        if (_compression_level == NONE) {
+            for (const auto &mtpx_item : *next_bucket) {
+                // extract data
+                _current_bucket[i] = mtpx_item.second;
 
-            if (_duplicate_finder.find(_extract_key_fn(_current_bucket[i])) != _duplicate_finder.end()) {
-                // duplicate found, handle according to compression level
-                switch (_compression_level) {
-                    case NONE:
-                        // no multiplexing, possibly cached
-                        break;
-                    case CROSS:
-                        // only compress if the previous duplicate is not from the same file according to file id
-                        if (_duplicate_finder.at(_extract_key_fn(_current_bucket[i])).first != mtpx_item.first) {
+                if (_cache_subsystem->find(_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
+                    // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+                    _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
+                } else {
+                    // unique, non-cached value return as part of compressed bucket
+                    _unique_entries.emplace_back(mtpx_item.second);
+                    _multiplexer[i] = std::make_pair(mtpx_item.first, _unique_entries.size() - 1);
+                }
+                i++;
+            }
+        } else {
+            for (const auto &mtpx_item : *next_bucket) {
+                // extract data
+                _current_bucket[i] = mtpx_item.second;
+
+                if (_duplicate_finder.find(_extract_key_fn(_current_bucket[i])) != _duplicate_finder.end()) {
+                    // duplicate found, handle according to compression level
+                    switch (_compression_level) {
+                        case CROSS:
+                            // only compress if the previous duplicate is not from the same file according to file id
+                            if (_duplicate_finder.at(_extract_key_fn(_current_bucket[i])).first != mtpx_item.first) {
+                                _multiplexer[i] = std::make_pair(mtpx_item.first,
+                                                                 _duplicate_finder.at(
+                                                                         _extract_key_fn(_current_bucket[i])).second);
+                            } else {
+                                // otherwise count as a unique entry
+                                _unique_entries.emplace_back(mtpx_item.second);
+                                _multiplexer[i] = std::make_pair(mtpx_item.first, i);
+                            }
+                            break;
+                        case FULL:
+                            // compress if any duplication detected
                             _multiplexer[i] = std::make_pair(mtpx_item.first,
                                                              _duplicate_finder.at(
                                                                      _extract_key_fn(_current_bucket[i])).second);
-                        } else {
-                            // otherwise count as a unique entry
-                            _unique_entries.emplace_back(mtpx_item.second);
-                            _multiplexer[i] = std::make_pair(mtpx_item.first, i);
-                        }
-                        break;
-                    case FULL:
-                        // compress if any duplication detected
-                        _multiplexer[i] = std::make_pair(mtpx_item.first,
-                                                         _duplicate_finder.at(
-                                                                 _extract_key_fn(_current_bucket[i])).second);
-                        break;
-                    default:
-                        break;
-                }
-            } else if (_cache_subsystem->find(_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
-                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
-                _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-            } else {
-                // unique, non-cached value return as part of compressed bucket
-                _unique_entries.emplace_back(mtpx_item.second);
-                _multiplexer[i] = std::make_pair(mtpx_item.first, _unique_entries.size() - 1);
+                            break;
+                        default:
+                            break;
+                    }
+                } else if (_cache_subsystem->find(_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
+                    // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+                    _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
+                } else {
+                    // unique, non-cached value return as part of compressed bucket
+                    _unique_entries.emplace_back(mtpx_item.second);
+                    _multiplexer[i] = std::make_pair(mtpx_item.first, _unique_entries.size() - 1);
 
-                // store for later lookup to detect further duplicates
-                if (_compression_level > NONE) {
-                    _duplicate_finder.emplace(_extract_key_fn(_current_bucket[i]),
-                                              std::make_pair(mtpx_item.first, _unique_entries.size() - 1));
+                    // store for later lookup to detect further duplicates
+                    if (_compression_level > NONE) {
+                        _duplicate_finder.emplace(_extract_key_fn(_current_bucket[i]),
+                                                  std::make_pair(mtpx_item.first, _unique_entries.size() - 1));
+                    }
                 }
+                i++;
             }
-            i++;
         }
         _duplicate_finder.clear();
 
@@ -293,21 +307,31 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     temp_multiplexer->resize(next_bucket->size());
 
     uint64_t i = 0;
-    if (_compression_level == CompressionLevel::NONE){
+    V *tmp = nullptr;
+    if (_compression_level == CompressionLevel::NONE) {
         for (const auto &mtpx_item : *next_bucket) {
             // extract data
             (*temp_bucket)[i] = mtpx_item.second;
 
-            if (_cache_subsystem->find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
-                // TODO make this atomic
-                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+            _cache_subsystem->fetch_into(_extract_key_fn((*temp_bucket)[i]), tmp);
+            if (tmp != nullptr){
                 (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-                temp_cache_hits->push(_cache_subsystem->at(_extract_key_fn((*temp_bucket)[i])));
+                temp_cache_hits->push(*tmp);
             } else {
-                // unique, non-cached value return as part of compressed bucket
                 unique_entries.emplace_back(mtpx_item.second);
                 (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
             }
+
+//            if (_cache_subsystem->find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
+//                // TODO make this atomic
+//                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+//                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
+//                temp_cache_hits->push(_cache_subsystem->at(_extract_key_fn((*temp_bucket)[i])));
+//            } else {
+//                // unique, non-cached value return as part of compressed bucket
+//                unique_entries.emplace_back(mtpx_item.second);
+//                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
+//            }
             i++;
         }
     } else {
@@ -342,22 +366,33 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
                     default:
                         break;
                 }
-            } else if (_cache_subsystem->find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
-                // TODO make this atomic
-                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
-                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-                temp_cache_hits->push(_cache_subsystem->at(_extract_key_fn((*temp_bucket)[i])));
             } else {
-                // unique, non-cached value return as part of compressed bucket
-                unique_entries.emplace_back(mtpx_item.second);
-                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
-
-                // store for later lookup to detect further duplicates
-                if (_compression_level > NONE) {
-                    duplicate_finder.emplace(_extract_key_fn((*temp_bucket)[i]),
-                                             std::make_pair(mtpx_item.first, unique_entries.size() - 1));
+                _cache_subsystem->fetch_into(_extract_key_fn((*temp_bucket)[i]), tmp);
+                if (tmp != nullptr){
+                    (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
+                    temp_cache_hits->push(*tmp);
+                } else {
+                    unique_entries.emplace_back(mtpx_item.second);
+                    (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
                 }
             }
+
+//            else if (_cache_subsystem->find(_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
+//                // TODO make this atomic
+//                // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
+//                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
+//                temp_cache_hits->push(_cache_subsystem->at(_extract_key_fn((*temp_bucket)[i])));
+//            } else {
+//                // unique, non-cached value return as part of compressed bucket
+//                unique_entries.emplace_back(mtpx_item.second);
+//                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
+//
+//                // store for later lookup to detect further duplicates
+//                if (_compression_level > NONE) {
+//                    duplicate_finder.emplace(_extract_key_fn((*temp_bucket)[i]),
+//                                             std::make_pair(mtpx_item.first, unique_entries.size() - 1));
+//                }
+//            }
             i++;
         }
     }
@@ -439,7 +474,8 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 line_out = _postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
                 _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
                 // TODO: figure out why this is so slow
-                _cache_subsystem->insert_no_evict(_extract_key_fn((*temp_bucket)[i]), out[(*temp_multiplexer)[i].second]);
+                _cache_subsystem->insert_no_evict(_extract_key_fn((*temp_bucket)[i]),
+                                                  out[(*temp_multiplexer)[i].second]);
             }
         }
         notify(1);
