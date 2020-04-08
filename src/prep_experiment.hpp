@@ -184,6 +184,19 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         } else {
             c = std::make_shared<DummyCache<std::string, std::string> >();
         }
+
+        if (cfp.contains("cache_decorator")){
+            std::string dec = cfp.get_val("cache_decorator");
+            std::shared_ptr<CacheDecorator<std::string, std::string> > w;
+
+            if (dec == "bloom_filter"){
+                w = std::make_shared<BFECache<std::string, std::string> >();
+                w->set_cache(c);
+            }
+
+            c = w;
+        }
+
         pipe->set_cache_subsystem(c);
         pipe->register_observer(c);
     }

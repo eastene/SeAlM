@@ -5,16 +5,16 @@
 #ifndef ALIGNER_CACHE_CACHE_HPP
 #define ALIGNER_CACHE_CACHE_HPP
 
-#include <iostream>
-#include <string>
 #include <list>
-#include <vector>
 #include <mutex>
-#include <unordered_map>
+#include <string>
+#include <vector>
 #include <random>
+#include <iostream>
+#include <unordered_map>
+
 #include "types.hpp"
 #include "signaling.hpp"
-
 
 template<typename K, typename V>
 class InMemCache : public Observer {
@@ -358,15 +358,265 @@ void MRUCache<K, V>::trim() {
 
 
 /*
- * BLOOM FILTER ENHANCED CACHE
+ *
+ *
+ * CACHE DECORATORS
+ *
+ *
+ */
+
+
+/*
+ * BASE CACHE DECORATOR
  */
 
 template<typename K, typename V>
-class BFECache : public LRUCache<K, V> {
+class CacheDecorator : public InMemCache<K, V> {
+protected:
+    std::shared_ptr<InMemCache<K, V> > _decorated_cache;
+
+    // implemented as no-op but can be overwritten if decorator implements new evict policy
+    // each decorated cache should idealy handle its own eviction policy
+    virtual void evict() {  }
+
+public:
+    CacheDecorator() {
+        // TODO: find a better way to do this (higher level interface?)
+        // cache index won't be used, shrink its size to avoid clogging memory
+        this->_cache_index.reserve(0);
+    }
+
+    void set_cache(std::shared_ptr< InMemCache<K, V> > &cache) { _decorated_cache = cache; }
+
+    /*
+     * Overwrite State Descriptors
+     */
+    void set_max_size(uint64_t max_size) { this->_decorated_cache->set_max_size(max_size); }
+
+    double hit_rate() {
+        return this->_decorated_cache->hit_rate();
+    }
+
+    uint64_t hits() { return this->_decorated_cache->hits(); }
+
+    uint64_t misses() { return this->_decorated_cache->misses(); }
+
+    uint32_t capacity() { return this->_decorated_cache->capacity(); }
+
+    uint32_t size() { return this->_decorated_cache->size(); }
+
+    typename std::unordered_map<K, std::unique_ptr<V>>::iterator end() { return this->_decorated_cache->end(); }
+
+    friend std::ostream &operator<<(std::ostream &output, const CacheDecorator &C) {
+        output << C._decorated_cache;
+        return output;
+    }
+};
+
+/*
+* BLOOM FILTER ENHANCED CACHE
+*/
+
+template<typename K, typename V>
+class BFECache : public CacheDecorator<K, V> {
 private:
-    std::vector<bool> bits;
+    u_int32_t _m; // number of bits (power of 2)
+    u_int16_t _k; // number of hash functions (power of 2)
+    u_int8_t _hash_size; // number of elements considered in each hash
+    u_int16_t _data_len; // number of elements available to hash over
+    u_int16_t _alphabits; // number of bits required to represent alphabet TODO: make this a parameter
+
+    std::vector<std::vector<u_int16_t> > _funcs;
+    std::vector<bool> _bits;
+
+    void initialize_bloom_filter();
+
+public:
+    u_int64_t hash_key(const K &key, u_int16_t func);
+
+    void add_key(const K &key); // add key to bloom filter
+    bool possibly_exists(const K &key); // check if key exists (possibly returns true if key doesn't exist)
+    std::vector<std::vector<u_int16_t> > get_functions() { return _funcs; }
+
+public:
+    BFECache();
+
+    BFECache(u_int32_t m, u_int16_t k, u_int16_t data_len);
+
+    void set_bloom_params(u_int32_t m, u_int16_t k, u_int16_t data_len){_m=m; _k=k; _data_len=data_len; initialize_bloom_filter();}
+
+    void insert(const K &key, const V &value) override;
+
+    void insert_no_evict(const K &key, const V &value) override;
+
+    void trim();
+
+    typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) override;
+
+    V &at(const K &key) override;
+
+    V &operator[](K &key) override;
+
+    void clear() override;
+
+    void fetch_into(const K &key, V *buff) override;
 
 };
 
+template<typename K, typename V>
+void BFECache<K, V>::initialize_bloom_filter() {
+    _alphabits = 3;
+    _bits.resize(_m, 0);
+    // random number generator to generate functions
+    std::default_random_engine generator;
+    generator.seed(1234);
+    // TODO: use a distribution that takes into account error profile and known prefix (e.g. Gamma)
+    std::uniform_int_distribution<u_int16_t> distribution(0, _data_len - 1);
+
+    _hash_size = ceil(log2(_m) / _alphabits);
+    // create functions
+    _funcs.resize(_k);
+    for (int i = 0; i < _k; i++) {
+        for (int j = 0; j < _hash_size; j++) {
+            _funcs[i].emplace_back(distribution(generator));
+        }
+    }
+}
+
+template<typename K, typename V>
+u_int64_t BFECache<K, V>::hash_key(const K &key, u_int16_t func) {
+    u_int64_t hash_res = 0;
+    u_int8_t shift_amnt = 0;
+
+    for (int i = 0; i < _hash_size; i++) {
+        switch (key[_funcs[func][i]]) {
+            case 'A':
+                hash_res |= 0 << shift_amnt;
+                break;
+            case 'C':
+                hash_res |= 1 << shift_amnt;
+                break;
+            case 'G':
+                hash_res |= 2 << shift_amnt;
+                break;
+            case 'T':
+                hash_res |= 3 << shift_amnt;
+                break;
+            case 'N':
+                hash_res |= 4 << shift_amnt;
+                break;
+            default:
+                // case where unknown character is found or reads are trimmed (thus too short for function)
+                hash_res |= 7 << shift_amnt;
+                break;
+        }
+        shift_amnt += _alphabits;
+    }
+
+    return hash_res;
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::add_key(const K &key) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    for (int i = 0; i < _k; i++) {
+        _bits[hash_key(key, i)] = 1;
+    }
+}
+
+template<typename K, typename V>
+bool BFECache<K, V>::possibly_exists(const K &key) {
+    std::lock_guard<std::mutex> lock(this->_cache_mutex);
+    for (int i = 0; i < _k; i++) {
+        if (!_bits[hash_key(key, i)])
+            return false;
+    }
+    return true;
+}
+
+template<typename K, typename V>
+BFECache<K, V>::BFECache() {
+    // choose m and k to get an epsilon of ~5%, will be less due to rounding to nearest pow of 2
+    // assumes cache holds default number of elements (4M keys)
+    _m = 1 < 24;
+    _k = 1 < 2;
+    _hash_size = 8;  // assumes 3 bits per base
+    _data_len = 100;
+
+    initialize_bloom_filter();
+}
+
+template<typename K, typename V>
+BFECache<K, V>::BFECache(u_int32_t m, u_int16_t k, u_int16_t data_len) {
+    // choose m and k to get an epsilon of ~5%, will be less due to rounding to nearest pow of 2
+    // assumes cache holds default number of elements (4M keys)
+    _m = m;
+    _k = k;
+    _hash_size = 2;  // assumes 3 bits per base
+    _data_len = data_len;
+
+    initialize_bloom_filter();
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::insert(const K &key, const V &value) {
+    if (possibly_exists(key)) {
+        // key already seen, good candidate for cache
+        this->_decorated_cache->insert(key, value);
+    } else {
+        // remember key, but don't add to cache
+        add_key(key);
+    }
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::insert_no_evict(const K &key, const V &value) {
+    if (possibly_exists(key)) {
+        // key already seen, good candidate for cache
+        this->_decorated_cache->insert_no_evict(key, value);
+    } else {
+        // remember key, but don't add to cache
+        add_key(key);
+    }
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::trim() {
+    this->_decorated_cache->trim();
+}
+
+template<typename K, typename V>
+typename std::unordered_map<K, std::unique_ptr<V>>::iterator BFECache<K, V>::find(const K &key) {
+    if (!possibly_exists(key)) {
+        // use bloom filter to prevent unecessary cache searches
+        return this->_decorated_cache->end();
+    } else {
+        add_key(key); // TODO: should key be added to bloom filter here? or only on insert?
+        return this->_decorated_cache->find(key);
+    }
+}
+
+template<typename K, typename V>
+V &BFECache<K, V>::at(const K &key) {
+    return this->_decorated_cache->at(key);
+}
+
+template<typename K, typename V>
+V &BFECache<K, V>::operator[](K &key) {
+    return this->_decorated_cache->operator[](key);
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::clear() {
+    // reset bloom filter
+    _bits.clear();
+    _bits.resize(_m, 0);
+    this->_decorated_cache->clear();
+}
+
+template<typename K, typename V>
+void BFECache<K, V>::fetch_into(const K &key, V *buff) {
+    this->_decorated_cache->fetch_into(key, buff);
+}
 
 #endif //ALIGNER_CACHE_CACHE_HPP

@@ -92,6 +92,65 @@ TEST_CASE("mru cache evicts correctly" "[MRUCache]") {
     }
 }
 
+TEST_CASE("bloom filter cache behaves as expected", "[BFECache]"){
+    int cache_size = 1000;
+    std::string key = "ACGTN";
+    std::string not_key = "TGCNA";
+
+    BFECache<std::string, std::string> cache(65536, 2, key.size());
+    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    c = std::make_shared<LRUCache<std::string, std::string> >();
+    cache.set_cache(c);
+
+    cache.set_max_size(cache_size);
+
+    SECTION("bloom hash works correctly") {
+        cache.add_key(key);
+        REQUIRE(cache.possibly_exists(key));
+        REQUIRE(!cache.possibly_exists(not_key));
+    }
+
+    cache.clear();
+    cache.set_max_size(1);
+    std::string value = "test";
+    SECTION("bloom decorates cache correctly") {
+        REQUIRE(cache.capacity() == 1);
+        cache.insert(key, value);
+        REQUIRE(cache.find(key) == cache.end());
+        REQUIRE(cache.misses() == 1);
+        cache.insert(key, value);
+        REQUIRE(cache.find(key) != cache.end());
+        REQUIRE(cache.at(key) == value);
+        REQUIRE(cache.size() == 1);
+        REQUIRE(cache.hits() == 1);
+
+        cache.insert(not_key, value);
+        REQUIRE(cache.find(key) != cache.end());
+        REQUIRE(cache.at(key) == value);
+        REQUIRE(cache.size() == 1);
+        REQUIRE(cache.hits() == 2);
+
+        cache.insert(not_key, value);
+        REQUIRE(cache.find(key) == cache.end());
+        REQUIRE(cache.misses() == 2);
+        REQUIRE(cache.size() == 1);
+    }
+
+    cache.clear();
+    cache.set_max_size(cache_size);
+    std::string value1 = "test1";
+    SECTION("multiple values insert to cache correctly") {
+        cache.insert(key, value);
+        cache.insert(not_key, value);
+        REQUIRE(cache.size() == 0);
+        cache.insert(key, value);
+        cache.insert(not_key, value1);
+        REQUIRE(cache.size() == 2);
+        REQUIRE(cache.at(key) != value1);
+        REQUIRE(cache.at(not_key) == value1);
+    }
+}
+
 TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
     int cache_size = 10000;
     LRUCache<std::string, std::string> cache;
@@ -131,5 +190,30 @@ TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
          for (int i = 0; i < cache_size; i++) {
              cache.insert(key + std::to_string(i), value + std::to_string(i));
          }
+    };
+}
+
+TEST_CASE("benchmark cache inserting with bloom filter", "[BFECache]") {
+    int cache_size = 1000;
+    std::string key = "test_key";
+    std::string value = "test_value";
+
+    BFECache<std::string, std::string> cache(65536, 3, key.size() + 4);
+    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    c = std::make_shared<LRUCache<std::string, std::string> >();
+    cache.set_cache(c);
+
+    cache.set_max_size(cache_size);
+
+    BENCHMARK("Insert Until Full") {
+       for (int i = 0; i < cache_size; i++) {
+           cache.insert(key + std::to_string(i), value + std::to_string(i));
+       }
+    };
+
+    BENCHMARK("Insert After Full") {
+       for (int i = 0; i < cache_size; i++) {
+           cache.insert(key + std::to_string(i), value + std::to_string(i));
+       }
     };
 }
