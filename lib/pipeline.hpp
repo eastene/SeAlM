@@ -48,12 +48,11 @@ template<typename T, typename K, typename V>
 class BucketedPipelineManager : public Observable {
 protected:
     // IO variables
-    //TODO: change to unique pointer (?)
-    InterleavedIOScheduler<T> _io_subsystem;
+    std::shared_ptr< InterleavedIOScheduler<T> > _io_subsystem;
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    std::shared_ptr<InMemCache<K, V> > _cache_subsystem;
+    std::shared_ptr< InMemCache<K, V> > _cache_subsystem;
 
     // Current bucket data structures
     std::vector<T> _current_bucket;
@@ -117,13 +116,13 @@ public:
      * Getters/Setters
      */
 
-    std::vector<std::string> get_filenames() { return _io_subsystem.get_input_filenames(); }
+    std::vector<std::string> get_filenames() { return _io_subsystem->get_input_filenames(); }
 
     void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
 
     void set_cache_subsystem(std::shared_ptr<InMemCache<K, V> > &other) { _cache_subsystem = other; }
 
-    void set_io_subsystem(InterleavedIOScheduler<T> &other) { _io_subsystem = std::move(other); }
+    void set_io_subsystem(std::shared_ptr< InterleavedIOScheduler<T> > &other) { _io_subsystem = other; }
 
     void set_parser(std::shared_ptr< DataParser<T,K,V> > &other){_parser = other;}
 
@@ -131,9 +130,9 @@ public:
      * State Descriptors
      */
 
-    bool empty() { return _io_subsystem.empty(); }
+    bool empty() { return _io_subsystem->empty(); }
 
-    bool full() { return _io_subsystem.full(); }
+    bool full() { return _io_subsystem->full(); }
 
     uint64_t current_bucket_size() {
         uint64_t tmp = 0;
@@ -159,7 +158,7 @@ public:
 
     uint64_t cache_misses() { return _cache_subsystem->misses(); }
 
-    uint64_t capacity() { return _io_subsystem.capacity(); }
+    uint64_t capacity() { return _io_subsystem->capacity(); }
 
     /*
      * Operator Overloads
@@ -186,13 +185,13 @@ BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
 
 template<typename T, typename K, typename V>
 void BucketedPipelineManager<T, K, V>::set_params(PipelineParams &params) {
-    _io_subsystem.set_input_pattern(params.input_file_pattern);
-    _io_subsystem.from_dir(params.data_dir);
+    _io_subsystem->set_input_pattern(params.input_file_pattern);
+    _io_subsystem->from_dir(params.data_dir);
 }
 
 template<typename T, typename K, typename V>
 void BucketedPipelineManager<T, K, V>::open() {
-    _io_subsystem.begin_reading();
+    _io_subsystem->begin_reading();
     _pipe_clear_flag = true;
 }
 
@@ -202,7 +201,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
     if (_pipe_clear_flag) {
         // read next bucket after previous is written
         _pipe_clear_flag = false;
-        auto next_bucket = _io_subsystem.request_bucket();
+        auto next_bucket = _io_subsystem->request_bucket();
 
         // prepare to compress
         _current_bucket.resize(next_bucket->size());
@@ -284,7 +283,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
 template<typename T, typename K, typename V>
 std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     // get next available bucket
-    auto next_bucket = _io_subsystem.request_bucket();
+    auto next_bucket = _io_subsystem->request_bucket();
 
     // prepare to compress
     std::unordered_map<K, std::pair<uint64_t, uint64_t> > duplicate_finder;
@@ -418,12 +417,12 @@ bool BucketedPipelineManager<T, K, V>::write(std::vector<V> &out) {
                 // found in cache earlier, report cached value
                 line_out = this->_parser->_postprocess_fn(_current_bucket[i],
                                            _cache_subsystem->at(this->_parser->_extract_key_fn(_current_bucket[i])));
-                _io_subsystem.write_async(_multiplexer[i].first, line_out);
+                _io_subsystem->write_async(_multiplexer[i].first, line_out);
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = this->_parser->_postprocess_fn(_current_bucket[i], out[_multiplexer[i].second]);
                 _cache_subsystem->insert_no_evict(this->_parser->_extract_key_fn(_current_bucket[i]), out[_multiplexer[i].second]);
-                _io_subsystem.write_async(_multiplexer[i].first, line_out);
+                _io_subsystem->write_async(_multiplexer[i].first, line_out);
             }
         }
         _cache_subsystem->trim();
@@ -458,11 +457,11 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 // found in cache earlier, report cached value
                 line_out = this->_parser->_postprocess_fn((*temp_bucket)[i], temp_cache_hits->front());
                 temp_cache_hits->pop();
-                _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
+                _io_subsystem->write_async((*temp_multiplexer)[i].first, line_out);
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = this->_parser->_postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
-                _io_subsystem.write_async((*temp_multiplexer)[i].first, line_out);
+                _io_subsystem->write_async((*temp_multiplexer)[i].first, line_out);
                 // TODO: figure out why this is so slow
                 _cache_subsystem->insert_no_evict(this->_parser->_extract_key_fn((*temp_bucket)[i]),
                                                   out[(*temp_multiplexer)[i].second]);
@@ -485,8 +484,8 @@ std::future<bool> BucketedPipelineManager<T, K, V>::write_async(std::vector<V> &
 template<typename T, typename K, typename V>
 void BucketedPipelineManager<T, K, V>::close() {
     _pipe_clear_flag = false;
-    _io_subsystem.stop_reading();
-    _io_subsystem.flush();
+    _io_subsystem->stop_reading();
+    _io_subsystem->flush();
 }
 
 template<typename T, typename K, typename V>

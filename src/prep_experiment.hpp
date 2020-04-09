@@ -193,8 +193,9 @@ class RetaggingParser : public FASTQParser {
 // Configure the data pipeline appropriately according to the config file
 // T-dataType, K-cacheKey, V-cacheValue
 void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
-    std::unique_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
-    InterleavedIOScheduler<Read> io;
+    std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
+    std::shared_ptr<InterleavedIOScheduler<Read>> io;
+    io = std::make_shared<InterleavedIOScheduler<Read>>()
 
     /*
      * Cache Parameters
@@ -234,11 +235,11 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
      */
     std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p;
     if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
-        bb = std::make_unique<BufferedSortedChain<std::pair<uint64_t, Read> > >();
+        bb = std::make_shared<BufferedSortedChain<std::pair<uint64_t, Read> > >();
         ReadOdering order;
         bb->set_ordering(order);
     } else {
-        bb = std::make_unique<BufferedBuckets<std::pair<uint64_t, Read> > >();
+        bb = std::make_shared<BufferedBuckets<std::pair<uint64_t, Read> > >();
     }
 
     if (cfp.contains("num_buckets"))
@@ -266,27 +267,27 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     bb->register_observer(c);
 
-    io.set_storage_subsystem(bb);
+    io->set_storage_subsystem(bb);
 
     /*
      * I/O Parameters
      */
 
     if (cfp.contains("async_io"))
-        io.set_async_flag(cfp.get_bool_val("async_io"));
+        io->set_async_flag(cfp.get_bool_val("async_io"));
 
     if (cfp.contains("max_interleave"))
-        io.set_max_interleave(cfp.get_long_val("max_interleave"));
+        io->set_max_interleave(cfp.get_long_val("max_interleave"));
 
     if (cfp.contains("input_pattern"))
-        io.set_input_pattern(cfp.get_val("input_pattern"));
+        io->set_input_pattern(cfp.get_val("input_pattern"));
 
     if (cfp.contains("output_ext"))
-        io.set_out_file_ext(cfp.get_val("output_ext"));
+        io->set_out_file_ext(cfp.get_val("output_ext"));
 
     if (cfp.contains("data_dir")) {
         try {
-            io.from_dir(cfp.get_val("data_dir"));
+            io->from_dir(cfp.get_val("data_dir"));
         } catch (IOAssumptionFailedException &e) {
             std::cout << "No files to align. Stopping." << std::endl;
             exit(0);
@@ -295,7 +296,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     else if (cfp.get_bool_val("stdin"))
     {
         std::string out = "OUT.sam";
-        io.from_stdin(out);
+        io->from_stdin(out);
     }
 
 

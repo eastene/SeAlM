@@ -144,8 +144,8 @@ public:
 
     void set_out_file_ext(const std::string &file_ext) { _auto_output_ext = file_ext; }
 
-    void set_storage_subsystem(std::unique_ptr<OrderedSequenceStorage<std::pair<uint64_t, T> > > &other) {
-        _storage_subsystem = std::move(other);
+    void set_storage_subsystem(std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, T> > > &other) {
+        _storage_subsystem = other;
     }
 
     /*

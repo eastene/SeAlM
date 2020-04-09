@@ -420,11 +420,11 @@ public:
 template<typename K, typename V>
 class BFECache : public CacheDecorator<K, V> {
 private:
-    u_int32_t _m; // number of bits (power of 2)
-    u_int16_t _k; // number of hash functions (power of 2)
-    u_int8_t _hash_size; // number of elements considered in each hash
-    u_int16_t _data_len; // number of elements available to hash over
-    u_int16_t _alphabits; // number of bits required to represent alphabet TODO: make this a parameter
+    uint32_t _m; // number of bits (power of 2)
+    uint16_t _k; // number of hash functions (power of 2)
+    uint8_t _hash_size; // number of elements considered in each hash
+    uint16_t _data_len; // number of elements available to hash over
+    uint16_t _alphabits; // number of bits required to represent alphabet TODO: make this a parameter
 
     std::vector<std::vector<u_int16_t> > _funcs;
     std::vector<bool> _bits;
@@ -432,7 +432,7 @@ private:
     void initialize_bloom_filter();
 
 public:
-    u_int64_t hash_key(const K &key, u_int16_t func);
+    uint64_t hash_key(const K &key, uint16_t func);
 
     void add_key(const K &key); // add key to bloom filter
     bool possibly_exists(const K &key); // check if key exists (possibly returns true if key doesn't exist)
@@ -441,9 +441,9 @@ public:
 public:
     BFECache();
 
-    BFECache(u_int32_t m, u_int16_t k, u_int16_t data_len);
+    BFECache(uint32_t m, uint16_t k, uint16_t data_len);
 
-    void set_bloom_params(u_int32_t m, u_int16_t k, u_int16_t data_len){_m=m; _k=k; _data_len=data_len; initialize_bloom_filter();}
+    void set_bloom_params(uint32_t m, uint16_t k, uint16_t data_len){_m=m; _k=k; _data_len=data_len; initialize_bloom_filter();}
 
     void insert(const K &key, const V &value) override;
 
@@ -484,9 +484,9 @@ void BFECache<K, V>::initialize_bloom_filter() {
 }
 
 template<typename K, typename V>
-u_int64_t BFECache<K, V>::hash_key(const K &key, u_int16_t func) {
-    u_int64_t hash_res = 0;
-    u_int8_t shift_amnt = 0;
+uint64_t BFECache<K, V>::hash_key(const K &key, uint16_t func) {
+    uint64_t hash_res = 0;
+    uint8_t shift_amnt = 0;
 
     for (int i = 0; i < _hash_size; i++) {
         switch (key[_funcs[func][i]]) {
@@ -547,7 +547,7 @@ BFECache<K, V>::BFECache() {
 }
 
 template<typename K, typename V>
-BFECache<K, V>::BFECache(u_int32_t m, u_int16_t k, u_int16_t data_len) {
+BFECache<K, V>::BFECache(uint32_t m, uint16_t k, uint16_t data_len) {
     // choose m and k to get an epsilon of ~5%, will be less due to rounding to nearest pow of 2
     // assumes cache holds default number of elements (4M keys)
     _m = m;
