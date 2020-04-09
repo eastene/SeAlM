@@ -195,7 +195,7 @@ class RetaggingParser : public FASTQParser {
 void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
     std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
     std::shared_ptr<InterleavedIOScheduler<Read>> io;
-    io = std::make_shared<InterleavedIOScheduler<Read>>()
+    io = std::make_shared<InterleavedIOScheduler<Read>>();
 
     /*
      * Cache Parameters
