@@ -10,15 +10,52 @@
 #include "../lib/types.hpp"
 #include "../lib/storage.hpp"
 
+class PrefixHasher : public DataHasher< std::pair<uint64_t, Read> >{
+public:
+
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) {
+        auto payload = data.second;
+        switch (payload[1][0]) {
+            case 'A':
+                return 0;
+            case 'C':
+                return 1;
+            case 'T':
+                return 2;
+            case 'G':
+                return 3;
+            default:
+                return 3;
+        }
+    }
+
+    uint64_t _required_table_width(){ return 4; }
+};
+
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
     BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p = std::make_shared<PrefixHasher>();
+    bb.set_data_properties(p);
     bb.set_bucket_size(50000);
 
     r[0] = "@test";
     r[1] = "AAGGC";
     r[2] = "+";
     r[3] = "=====";
+
+    SECTION("property assesor works correctly"){
+        Read r2 = r;
+        REQUIRE(p->_hash_fn(std::make_pair(0,r2)) == 0);
+        r2[1] = "CAGGT";
+        REQUIRE(p->_hash_fn(std::make_pair(0,r2)) == 1);
+        r2[1] = "TAGGT";
+        REQUIRE(p->_hash_fn(std::make_pair(0,r2)) == 2);
+        r2[1] = "GAGGT";
+        REQUIRE(p->_hash_fn(std::make_pair(0,r2)) == 3);
+        r2[1] = "NAGGT";
+        REQUIRE(p->_hash_fn(std::make_pair(0,r2)) == 3);
+    }
 
     for (int i = 1; i < 50000; i++) {
         bb.insert(std::make_pair(i, r));
@@ -92,7 +129,10 @@ TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
 TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]") {
     Read r(4, "");
     BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p = std::make_shared<PrefixHasher>();
+    bb.set_data_properties(p);
     bb.set_bucket_size(50000);
+    bb.set_num_buckets(4);
 
     r[0] = "@test";
     r[1] = "AAGGC";
@@ -104,7 +144,7 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
     }
 
     REQUIRE(bb.size() == 50000);
-    REQUIRE(bb.num_buckets() == 1   );
+    REQUIRE(bb.num_buckets() == 1);
 
     SECTION("buckets will be consumed from first chain until empty"){
         std::string old_label = r[0];

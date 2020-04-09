@@ -9,160 +9,188 @@
 #include "../lib/pipeline.hpp"
 
 /*
- * Hash functions
+ * READ ORDERING
  */
-
-
-uint64_t single_hash(const std::pair<uint64_t, Read> &data) {
-    auto payload = data.second;
-    switch (payload[1][0]) {
-        case 'A':
-            return 0;
-        case 'C':
-            return 1;
-        case 'T':
-            return 2;
-        case 'G':
-            return 3;
-        default:
-            return 3;
+struct ReadOdering : public ValueOrdering< std::pair<uint64_t, Read> > {
+    bool operator () (const std::pair<uint64_t, Read> &l, const std::pair<uint64_t, Read> &r) {
+        return l.second[1] < r.second[1];
     }
-}
-
-uint64_t double_hash(const std::pair<uint64_t, Read> &data) {
-    auto payload = data.second;
-    uint64_t hash = 0;
-    switch (payload[1][1]) {
-        case 'A':
-            hash |= 0b00;
-            break;
-        case 'C':
-            hash |= 0b01;
-            break;
-        case 'T':
-            hash |= 0b10;
-            break;
-        case 'G':
-            hash |= 0b11;
-            break;
-        default:
-            hash |= 0b11;
-            break;
-    }
-
-    switch (payload[1][0]) {
-        case 'A':
-            hash |= 0b0000;
-            break;
-        case 'C':
-            hash |= 0b0100;
-            break;
-        case 'T':
-            hash |= 0b1000;
-            break;
-        case 'G':
-            hash |= 0b1100;
-            break;
-        default:
-            hash |= 0b1100;
-            break;
-    }
-
-    return hash;
-}
-
-uint64_t triple_hash(const std::pair<uint64_t, Read> &data) {
-    auto payload = data.second;
-    uint64_t hash = 0b0;
-    uint64_t s = payload[1].size();
-    switch (payload[1][s - 3]) {
-        case 'A':
-        case 'C':
-            hash |= 0b00;
-            break;
-        case 'T':
-        case 'G':
-        default:
-            hash |= 0b11;
-            break;
-    }
-
-    switch (payload[1][s - 2]) {
-        case 'A':
-            hash |= 0b0000;
-            break;
-        case 'C':
-            hash |= 0b0100;
-            break;
-        case 'T':
-            hash |= 0b1000;
-            break;
-        case 'G':
-            hash |= 0b1100;
-            break;
-        default:
-            hash |= 0b1100;
-            break;
-    }
-
-    switch (payload[1][s - 1]) {
-        case 'A':
-            hash |= 0b000000;
-            break;
-        case 'C':
-            hash |= 0b010000;
-            break;
-        case 'T':
-            hash |= 0b100000;
-            break;
-        case 'G':
-            hash |= 0b110000;
-            break;
-        default:
-            hash |= 0b110000;
-            break;
-    }
-
-    return hash;
-}
+};
 
 /*
- * Postprocessing functions
+ * PREFIX PROPERTY
  */
 
-std::string retag_posprocess_fn(Read &data, std::string &value) {
-    std::stringstream ss;
-    std::string tag = data[0].substr(1, data[0].find(' ') - 1);
-    unsigned long sp1 = value.find('\t');
-    // TODO: replace qual score with one from this read
-    //unsigned long sp2 = alignment.find('\t', 9);
-    std::string untagged = value.substr(sp1);
+class PrefixHasher : public DataHasher< std::pair<uint64_t, Read> >{
+public:
 
-    ss << tag;
-    ss << "\t";
-    ss << untagged;
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
+        auto payload = data.second;
+        switch (payload[1][0]) {
+            case 'A':
+                return 0;
+            case 'C':
+                return 1;
+            case 'T':
+                return 2;
+            case 'G':
+                return 3;
+            default:
+                return 3;
+        }
+    }
 
-    return ss.str();
-}
+    uint64_t _required_table_width() override { return 4; }
+};
+
+class DoublePrefixHasher : public PrefixHasher {
+public:
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+        auto payload = data.second;
+        uint64_t hash = 0;
+        switch (payload[1][1]) {
+            case 'A':
+                hash |= 0b00;
+                break;
+            case 'C':
+                hash |= 0b01;
+                break;
+            case 'T':
+                hash |= 0b10;
+                break;
+            case 'G':
+                hash |= 0b11;
+                break;
+            default:
+                hash |= 0b11;
+                break;
+        }
+
+        switch (payload[1][0]) {
+            case 'A':
+                hash |= 0b0000;
+                break;
+            case 'C':
+                hash |= 0b0100;
+                break;
+            case 'T':
+                hash |= 0b1000;
+                break;
+            case 'G':
+                hash |= 0b1100;
+                break;
+            default:
+                hash |= 0b1100;
+                break;
+        }
+
+        return hash;
+    }
+
+    uint64_t _required_table_width() final { return 16; }
+};
+
+class TriplePrefixHasher : public PrefixHasher {
+public:
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+        auto payload = data.second;
+        uint64_t hash = 0b0;
+        uint64_t s = payload[1].size();
+        switch (payload[1][s - 3]) {
+            case 'A':
+            case 'C':
+                hash |= 0b00;
+                break;
+            case 'T':
+            case 'G':
+            default:
+                hash |= 0b11;
+                break;
+        }
+
+        switch (payload[1][s - 2]) {
+            case 'A':
+                hash |= 0b0000;
+                break;
+            case 'C':
+                hash |= 0b0100;
+                break;
+            case 'T':
+                hash |= 0b1000;
+                break;
+            case 'G':
+                hash |= 0b1100;
+                break;
+            default:
+                hash |= 0b1100;
+                break;
+        }
+
+        switch (payload[1][s - 1]) {
+            case 'A':
+                hash |= 0b000000;
+                break;
+            case 'C':
+                hash |= 0b010000;
+                break;
+            case 'T':
+                hash |= 0b100000;
+                break;
+            case 'G':
+                hash |= 0b110000;
+                break;
+            default:
+                hash |= 0b110000;
+                break;
+        }
+
+        return hash;
+    }
+
+    uint64_t _required_table_width() final { return 64; }
+};
 
 /*
- * Key Extraction Functions
+ * FASTQ PARSER
  */
+class FASTQParser : public DataParser<Read, std::string, std::string> {
+    /*
+     * Key Extraction Functions
+     */
+    std::string _extract_key_fn(Read &data) final {
+        return data[1];
+    }
 
-std::string seq_extraction_fn(Read &data) {
-    return data[1];
-}
+    /*
+     * Postprocessing functions
+     */
+    std::string _postprocess_fn(Read &data, std::string &value) override {
+        return value;
+    }
+};
 
-/*
- * Ordering Functions
- */
-bool seq_ordering(const std::pair<uint64_t, Read> &a, const std::pair<uint64_t, Read> &b) {
-    return a.second[1] < b.second[1];
-}
 
+class RetaggingParser : public FASTQParser {
+    /*
+     * Postprocessing functions
+     */
+    std::string _postprocess_fn(Read &data, std::string &value) final {
+        std::stringstream ss;
+        std::string tag = data[0].substr(1, data[0].find(' ') - 1);
+        unsigned long sp1 = value.find('\t');
+        // TODO: replace qual score with one from this read
+        //unsigned long sp2 = alignment.find('\t', 9);
+        std::string untagged = value.substr(sp1);
+
+        ss << tag;
+        ss << "\t";
+        ss << untagged;
+
+        return ss.str();
+    }
+};
 
 // Configure the data pipeline appropriately according to the config file
-
 // T-dataType, K-cacheKey, V-cacheValue
 void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
     std::unique_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
@@ -204,10 +232,11 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     /*
      * Storage Parameters
      */
-
+    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p;
     if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
         bb = std::make_unique<BufferedSortedChain<std::pair<uint64_t, Read> > >();
-        bb->set_ordering(seq_ordering);
+        ReadOdering order;
+        bb->set_ordering(order);
     } else {
         bb = std::make_unique<BufferedBuckets<std::pair<uint64_t, Read> > >();
     }
@@ -220,17 +249,15 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     if (cfp.contains("hash_func")) {
         std::string hash_func = cfp.get_val("hash_func");
-        if (hash_func == "single") {
-            bb->set_hash_fn(single_hash);
-            bb->set_table_width(4);
-        } else if (hash_func == "double") {
-            bb->set_hash_fn(double_hash);
-            bb->set_table_width(16);
+        if (hash_func == "double") {
+            p = std::make_shared<DoublePrefixHasher>();
         } else if (hash_func == "triple") {
-            bb->set_hash_fn(triple_hash);
-            bb->set_table_width(64);
+            p = std::make_shared<TriplePrefixHasher>();
+        } else {
+            // default is single prefix, also specified by "single"
+            p = std::make_shared<PrefixHasher>();
         }
-        // else keep default
+        bb->set_data_properties(p);
     }
 
     if (cfp.get_val("chain_switch") == "random") {
@@ -289,14 +316,15 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         }
     }
 
+    std::shared_ptr< DataParser<Read, std::string, std::string> > r = std::make_shared<FASTQParser>();
     if (cfp.contains("post_process_func")) {
         std::string post_proc = cfp.get_val("post_process_func");
         if (post_proc == "retag") {
-            pipe->set_postprocess_fn(retag_posprocess_fn);
+            r = std::make_shared<RetaggingParser>();
         }
     }
 
-    pipe->set_extract_key_fn(seq_extraction_fn);
+    pipe->set_parser(r);
 
 }
 

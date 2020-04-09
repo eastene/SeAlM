@@ -24,14 +24,28 @@
 class BadChainPushException : public std::exception {
 };
 
-
 /*
- *  Storage Specific Types
+ *  Storage Specific Types & Interfaces
  */
 
 enum ChainSwitch {
     LONGEST,
     RANDOM
+};
+
+// T - sequence Type (string, vector, etc.)
+template<typename T>
+class DataHasher{
+public:
+    virtual uint64_t _hash_fn(const T &d) = 0;
+    virtual uint64_t _required_table_width() = 0;
+};
+
+template<typename T>
+struct ValueOrdering {
+    bool operator()(T l, T r){
+        return l < r;
+    }
 };
 
 /*
@@ -66,13 +80,14 @@ protected:
     // Locks for thread safety
     std::mutex _bucket_mutex;
 
-    // Functors
-    std::function<uint64_t(const T &)> _hash_fn;
-    std::function<bool(const T &, const T &)> _value_ordering;
+    // Template functions class for deriving data-specific hashes
+    std::shared_ptr< DataHasher<T> > _hash;
+
+    // Comparator
+    ValueOrdering<T> _order;
 
     // Protected methods
     virtual void initialize() = 0;
-
     virtual void add_bucket(uint64_t from_buffer) = 0;
 
 public:
@@ -92,8 +107,6 @@ public:
         _max_buckets = 1;
         _table_width = 1;
         _max_bucket_size = 100000;
-        _hash_fn = std::function<uint64_t(const T &)>([](const T &data) { return 0; });
-        _value_ordering = std::function<bool(const T &, const T &)>([](const T &a, const T &b) { return a < b; });
     }
 
     /*
@@ -149,21 +162,32 @@ public:
 
     uint64_t capacity() { return _max_buckets; }
 
-    void set_num_buckets(uint64_t max_buckets) { _max_buckets = max_buckets; }
+    void set_num_buckets(uint64_t max_buckets) {
+        if (max_buckets < _table_width){
+            log_warn("Allowable buckets less than hash table width, may cause performance issues or lead to deadlock. Suggest increasing max allowable buckets.");
+        }
+        _max_buckets = max_buckets;
+    }
 
     void set_bucket_size(uint64_t max_bucket_size) { _max_bucket_size = max_bucket_size; }
-
-    void set_hash_fn(std::function<uint64_t(const T &)> fn) { _hash_fn = fn; }
-
-    void set_ordering(std::function<uint64_t(const T &, const T &)> fn) { this->_value_ordering = fn; }
 
     void set_chain_switch_mode(ChainSwitch cs) { _chain_switch = cs; }
 
     // TODO: add resize function that doesn't reinitialize all state
     void set_table_width(uint64_t table_width) {
+        if (_max_buckets < table_width){
+            log_warn("Allowable buckets less than hash table width, may cause performance issues or lead to deadlock. Suggest increasing max allowable buckets.");
+        }
         _table_width = table_width;
         initialize();
     }
+
+    void set_data_properties(std::shared_ptr< DataHasher<T> > &other){
+        _hash = other;
+        set_table_width(_hash->_required_table_width());
+    }
+
+    void set_ordering(ValueOrdering<T> &other){_order = other;}
 
     /*
      * Operator Overloads
@@ -186,9 +210,9 @@ public:
         // Atomic variables
         _alive = other._alive;
 
-        // Functors
-        _hash_fn = other._hash_fn;
-        _value_ordering = other._value_ordering;
+        // Data properties
+        _hash = other._hash;
+        _order = other._order;
     }
 };
 
@@ -294,7 +318,7 @@ template<typename T>
 bool BufferedBuckets<T>::insert(const T &data) {
     // find buffer for data and add
     //TODO: resize table if i goes beyond bounds
-    uint64_t i = this->_hash_fn(data);
+    uint64_t i = this->_hash->_hash_fn(data);
     _buffers[i]->emplace_back(data);
     this->_size++;
     // bucketize buffer if full and buffer space available
@@ -382,8 +406,9 @@ BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &othe
 
     initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
 
-    // Functors
-    this->_hash_fn = other._hash_fn;
+    // Data property assesors
+    this->_hash = other._hash;
+    this->_order = other._order;
 }
 
 /*
@@ -460,7 +485,7 @@ void BufferedSortedChain<T>::add_bucket(uint64_t from_buffer) {
         this->_buffers[from_buffer] = std::make_unique<std::vector<T>>();
 
         // sort each bucket in place as it is added
-        std::sort(_sorted_chain[from_buffer]->begin(), _sorted_chain[from_buffer]->end(), this->_value_ordering);
+        std::sort(_sorted_chain[from_buffer]->begin(), _sorted_chain[from_buffer]->end(), this->_order);
 
         // if this is the first bucket in empty structure, point next bucket to it
         if (_next_chain == std::numeric_limits<uint64_t>::max()) {
@@ -479,7 +504,7 @@ template<typename T>
 bool BufferedSortedChain<T>::insert(const T &data) {
     // find buffer for data and add
     //TODO: resize table if i goes beyond bounds
-    uint64_t i = this->_hash_fn(data);
+    uint64_t i = this->_hash->_hash_fn(data);
     this->_buffers[i]->emplace_back(data);
     this->_size++;
     // bucketize buffer if full and buffer space available
@@ -545,7 +570,7 @@ void BufferedSortedChain<T>::flush() {
                 _sorted_chain[i]->insert(_sorted_chain[i]->begin() + _sorted_chain[i]->size(),
                                          this->_buffers[i]->begin(),
                                          this->_buffers[i]->end());
-                std::sort(_sorted_chain[i]->begin(), _sorted_chain[i]->end(), this->_value_ordering);
+                std::sort(_sorted_chain[i]->begin(), _sorted_chain[i]->end(), this->_order);
             }
             this->_buffers[i] = std::make_unique<std::vector<T>>();
             this->_chain_lengths[i] = 1;
@@ -563,9 +588,9 @@ BufferedSortedChain<T> &BufferedSortedChain<T>::operator=(const BufferedSortedCh
 
     this->initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
 
-    // Functors
-    this->_hash_fn = other._hash_fn;
-    this->_value_ordering = other._value_ordering;
+    // Data properties
+    this->_hash = other._hash;
+    this->_order = other._order;
 }
 
 #endif //ALIGNER_CACHE_STORAGE_HPP

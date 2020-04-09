@@ -376,7 +376,6 @@ void InterleavedIOScheduler<T>::read_until_done() {
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
             // safety checks, make sure all input streams closed correctly
-            assert(_inputs.empty());
             assert(_in_streams.empty());
             assert(_seek_poses.empty());
             // flush all remaining data to storage module
@@ -419,8 +418,13 @@ void InterleavedIOScheduler<T>::read_until_full() {
 
         // once all files have been read, flush any data remaining in buffers to buckets
         if (_inputs.empty()) {
+            // safety checks, make sure all input streams closed correctly
+            assert(_in_streams.empty());
+            assert(_seek_poses.empty());
+            // flush all remaining data to storage module
             _storage_subsystem->flush();
-            _halt_flag.store(true);
+            _halt_flag = true;
+            log_info("Reading finished, all inputs exhausted.");
             //throw IOResourceExhaustedException();
         }
     }
