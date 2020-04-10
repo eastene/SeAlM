@@ -16,8 +16,66 @@
 #include "types.hpp"
 #include "signaling.hpp"
 
+/*
+ *
+ *  CACHE INTERFACE
+ *
+ */
+
 template<typename K, typename V>
-class InMemCache : public Observer {
+class CacheIndex : public Observer  {
+public:
+
+    virtual void set_max_size(uint64_t max_size) = 0;
+
+    virtual double hit_rate() = 0;
+
+    virtual uint64_t hits() = 0;
+
+    virtual uint64_t misses() = 0;
+
+    virtual uint32_t capacity() = 0;
+
+    virtual uint32_t size() = 0;
+
+    virtual typename std::unordered_map<K, std::unique_ptr<V>>::iterator end() = 0;
+
+    virtual void update(int event) = 0;
+
+    virtual void insert(const K &key, const V &value) = 0;
+
+    virtual void insert_no_evict(const K &key, const V &value) = 0;
+
+    virtual void trim() = 0;
+
+    virtual typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) = 0;
+
+    virtual V &at(const K &key) = 0;
+
+    virtual V &operator[](K &key) = 0;
+
+    virtual void clear() = 0;
+
+    virtual void fetch_into(const K &key, V *buff) = 0;
+
+    virtual void serialize(std::ostream &output) const = 0;
+
+    friend std::ostream &operator<<(std::ostream &output, const CacheIndex &C) {
+        C.serialize(output);
+        return output;
+    }
+};
+
+/*
+ *
+ *
+ * BASIC EVICTION CACHES
+ *
+ *
+ */
+
+template<typename K, typename V>
+class BasicEvictionCache : public CacheIndex<K,V> {
 protected:
 
     // Storage structure
@@ -44,7 +102,7 @@ public:
      * Implemented Base Methods 1048576 * 4
      */
 
-    InMemCache() : _max_cache_size{1048576 * 4}, _hits{0}, _misses{0}, _keys{0} {};
+    BasicEvictionCache() : _max_cache_size{1048576 * 4}, _hits{0}, _misses{0}, _keys{0} {};
 
     void set_max_size(uint64_t max_size) { _max_cache_size = max_size; }
 
@@ -91,9 +149,8 @@ public:
     // TODO: find more consistent way to do this?
     virtual void fetch_into(const K &key, V *buff) = 0;
 
-    friend std::ostream &operator<<(std::ostream &output, const InMemCache &C) {
-        output << "Hits: " << C._hits << " Misses: " << C._misses << " Size: " << C._keys;
-        return output;
+    void serialize(std::ostream &output) const {
+        output << "Hits: " << _hits << " Misses: " << _misses << " Size: " << _keys;
     }
 };
 
@@ -104,7 +161,7 @@ public:
 
 
 template<typename K, typename V>
-class DummyCache : public InMemCache<K, V> {
+class DummyCache : public BasicEvictionCache<K, V> {
 private:
     void evict() override;
 
@@ -168,7 +225,7 @@ void DummyCache<K, V>::fetch_into(const K &key, V *buff) {
 
 
 template<typename K, typename V>
-class LRUCache : public InMemCache<K, V> {
+class LRUCache : public BasicEvictionCache<K, V> {
 protected:
     std::list<K> _order;
     std::unordered_map<K, typename std::list<K>::iterator> _order_lookup;
@@ -197,7 +254,7 @@ public:
 };
 
 template<typename K, typename V>
-LRUCache<K, V>::LRUCache() : InMemCache<K, V>() {
+LRUCache<K, V>::LRUCache() : BasicEvictionCache<K, V>() {
     // Preallocate space for cache
     //_order.resize(this->_max_cache_size);
     _order_lookup.reserve(this->_max_cache_size + 50000);
@@ -371,22 +428,16 @@ void MRUCache<K, V>::trim() {
  */
 
 template<typename K, typename V>
-class CacheDecorator : public InMemCache<K, V> {
+class CacheDecorator : public CacheIndex<K, V> {
 protected:
-    std::shared_ptr<InMemCache<K, V> > _decorated_cache;
-
-    // implemented as no-op but can be overwritten if decorator implements new evict policy
-    // each decorated cache should idealy handle its own eviction policy
-    virtual void evict() {  }
+    std::shared_ptr<CacheIndex<K, V> > _decorated_cache;
+    // Locks for thread safety
+    std::mutex _cache_mutex;
 
 public:
-    CacheDecorator() {
-        // TODO: find a better way to do this (higher level interface?)
-        // cache index won't be used, shrink its size to avoid clogging memory
-        this->_cache_index.reserve(0);
-    }
+    CacheDecorator() = default;
 
-    void set_cache(std::shared_ptr< InMemCache<K, V> > &cache) { _decorated_cache = cache; }
+    void set_cache(std::shared_ptr< CacheIndex<K, V> > &cache) { _decorated_cache = cache; }
 
     /*
      * Overwrite State Descriptors
@@ -407,10 +458,10 @@ public:
 
     typename std::unordered_map<K, std::unique_ptr<V>>::iterator end() { return this->_decorated_cache->end(); }
 
-    friend std::ostream &operator<<(std::ostream &output, const CacheDecorator &C) {
-        output << C._decorated_cache;
-        return output;
+    void serialize(std::ostream &output) const {
+        _decorated_cache->serialize(output);
     }
+
 };
 
 /*
@@ -444,6 +495,8 @@ public:
     BFECache(uint32_t m, uint16_t k, uint16_t data_len);
 
     void set_bloom_params(uint32_t m, uint16_t k, uint16_t data_len){_m=m; _k=k; _data_len=data_len; initialize_bloom_filter();}
+
+    void update(int event){this->_decorated_cache->update(event);}
 
     void insert(const K &key, const V &value) override;
 

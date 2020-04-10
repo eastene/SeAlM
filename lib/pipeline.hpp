@@ -52,7 +52,7 @@ protected:
 
     // Global cache variables
     // TODO implement cross-only compression for caching
-    std::shared_ptr< InMemCache<K, V> > _cache_subsystem;
+    std::shared_ptr< CacheIndex<K, V> > _cache_subsystem;
 
     // Current bucket data structures
     std::vector<T> _current_bucket;
@@ -120,7 +120,7 @@ public:
 
     void set_compression_level(CompressionLevel cl) { _compression_level = cl; }
 
-    void set_cache_subsystem(std::shared_ptr<InMemCache<K, V> > &other) { _cache_subsystem = other; }
+    void set_cache_subsystem(std::shared_ptr<CacheIndex<K, V> > &other) { _cache_subsystem = other; }
 
     void set_io_subsystem(std::shared_ptr< InterleavedIOScheduler<T> > &other) { _io_subsystem = other; }
 

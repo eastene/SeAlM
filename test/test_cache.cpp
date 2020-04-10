@@ -14,7 +14,7 @@ TEST_CASE("dummy cache initializes correctly" "[DummyCache]") {
 
     REQUIRE(cache.hits() == 0);
     REQUIRE(cache.hit_rate() == 0);
-    REQUIRE(cache.capacity() == 900000);
+    REQUIRE(cache.capacity() == 1048576 * 4);
 
     SECTION("dummy cache stores no values") {
         cache.insert(key, value);
@@ -98,7 +98,7 @@ TEST_CASE("bloom filter cache behaves as expected", "[BFECache]"){
     std::string not_key = "TGCNA";
 
     BFECache<std::string, std::string> cache(65536, 2, key.size());
-    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    std::shared_ptr<CacheIndex<std::string, std::string> > c;
     c = std::make_shared<LRUCache<std::string, std::string> >();
     cache.set_cache(c);
 
@@ -199,7 +199,7 @@ TEST_CASE("benchmark cache inserting with bloom filter", "[BFECache]") {
     std::string value = "test_value";
 
     BFECache<std::string, std::string> cache(65536, 3, key.size() + 4);
-    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    std::shared_ptr<CacheIndex<std::string, std::string> > c;
     c = std::make_shared<LRUCache<std::string, std::string> >();
     cache.set_cache(c);
 

@@ -248,7 +248,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
      * Cache Parameters
      */
 
-    std::shared_ptr<InMemCache<std::string, std::string> > c;
+    std::shared_ptr<CacheIndex<std::string, std::string> > c;
     c = std::make_shared<DummyCache<std::string, std::string> >();
     if (cfp.contains("cache_policy")) {
         std::string cache = cfp.get_val("cache_policy");
