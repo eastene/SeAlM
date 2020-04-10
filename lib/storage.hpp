@@ -2,8 +2,8 @@
 // Created by evan on 4/30/19.
 //
 
-#ifndef ALIGNER_CACHE_STORAGE_HPP
-#define ALIGNER_CACHE_STORAGE_HPP
+#ifndef SEALM_STORAGE_HPP
+#define SEALM_STORAGE_HPP
 
 #include <list>
 #include <mutex>
@@ -593,4 +593,4 @@ BufferedSortedChain<T> &BufferedSortedChain<T>::operator=(const BufferedSortedCh
     this->_order = other._order;
 }
 
-#endif //ALIGNER_CACHE_STORAGE_HPP
+#endif //SEALM_STORAGE_HPP

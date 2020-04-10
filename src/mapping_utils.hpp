@@ -2,8 +2,8 @@
 // Created by evan on 4/19/19.
 //
 
-#ifndef ALIGNER_CACHE_MAPPING_UTILS_HPP
-#define ALIGNER_CACHE_MAPPING_UTILS_HPP
+#ifndef SEALM_MAPPING_UTILS_HPP
+#define SEALM_MAPPING_UTILS_HPP
 
 #include <cstdio>
 #include <vector>
@@ -88,4 +88,4 @@ double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std:
 }
 
 
-#endif //ALIGNER_CACHE_MAPPING_UTILS_HPP
+#endif //SEALM_MAPPING_UTILS_HPP

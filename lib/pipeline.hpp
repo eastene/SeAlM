@@ -2,8 +2,8 @@
 // Created by evan on 4/22/19.
 //
 
-#ifndef ALIGNER_CACHE_PIPELINE_HPP
-#define ALIGNER_CACHE_PIPELINE_HPP
+#ifndef SEALM_PIPELINE_HPP
+#define SEALM_PIPELINE_HPP
 
 #include <variant>
 #include <memory>
@@ -29,7 +29,7 @@ struct PipelineParams {
 
 // T-dataType, K-cacheKey, V-cacheValue
 template<typename T, typename K, typename V>
-class DataParser {
+class DataProcessor {
 public:
     virtual K _extract_key_fn(T &d) = 0; // extract key from data or transform data into key
     virtual std::string _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
@@ -77,7 +77,7 @@ protected:
     std::mutex _pipe_mutex;
 
     // Data parsing functions template
-    std::shared_ptr< DataParser<T,K,V> > _parser;
+    std::shared_ptr< DataProcessor<T,K,V> > _parser;
 
 public:
     /*
@@ -124,7 +124,7 @@ public:
 
     void set_io_subsystem(std::shared_ptr< InterleavedIOScheduler<T> > &other) { _io_subsystem = other; }
 
-    void set_parser(std::shared_ptr< DataParser<T,K,V> > &other){_parser = other;}
+    void set_parser(std::shared_ptr< DataProcessor<T,K,V> > &other){_parser = other;}
 
     /*
      * State Descriptors
@@ -521,4 +521,4 @@ BucketedPipelineManager<T, K, V> &BucketedPipelineManager<T, K, V>::operator=(co
     _parser = other._parser;
 }
 
-#endif //ALIGNER_CACHE_PIPELINE_HPP
+#endif //SEALM_PIPELINE_HPP

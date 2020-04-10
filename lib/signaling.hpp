@@ -2,8 +2,8 @@
 // Created by evan on 5/29/19.
 //
 
-#ifndef ALIGNER_CACHE_SIGNALING_HPP
-#define ALIGNER_CACHE_SIGNALING_HPP
+#ifndef SEALM_SIGNALING_HPP
+#define SEALM_SIGNALING_HPP
 
 #include <vector>
 #include <memory>
@@ -26,4 +26,4 @@ public:
     }
 };
 
-#endif //ALIGNER_CACHE_SIGNALING_HPP
+#endif //SEALM_SIGNALING_HPP

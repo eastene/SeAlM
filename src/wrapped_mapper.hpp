@@ -2,8 +2,8 @@
 // Created by evan on 4/19/19.
 //
 
-#ifndef ALIGNER_CACHE_WRAPPED_MAPPER_HPP
-#define ALIGNER_CACHE_WRAPPED_MAPPER_HPP
+#ifndef SEALM_WRAPPED_MAPPER_HPP
+#define SEALM_WRAPPED_MAPPER_HPP
 
 
 #include <string>
@@ -90,4 +90,4 @@ public:
 };
 
 
-#endif //ALIGNER_CACHE_WRAPPED_MAPPER_HPP
+#endif //SEALM_WRAPPED_MAPPER_HPP

@@ -2,8 +2,8 @@
 // Created by evan on 8/27/18.
 //
 
-#ifndef CACHED_ALIGNER_LOGGER_H
-#define CACHED_ALIGNER_LOGGER_H
+#ifndef SEALM_LOGGER_H
+#define SEALM_LOGGER_H
 
 #ifdef _WIN32
 #define PATH_SEP '\\'
@@ -104,4 +104,4 @@ inline void timer(const std::string& what, Lambda&& func, Args... args) {
     }
 }
 
-#endif //CACHED_ALIGNER_LOGGER_H
+#endif //SEALM_LOGGER_H

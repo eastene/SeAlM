@@ -2,8 +2,8 @@
 // Created by evan on 4/19/19.
 //
 
-#ifndef ALIGNER_CACHE_CACHE_HPP
-#define ALIGNER_CACHE_CACHE_HPP
+#ifndef SEALM_CACHE_HPP
+#define SEALM_CACHE_HPP
 
 #include <list>
 #include <mutex>
@@ -619,4 +619,4 @@ void BFECache<K, V>::fetch_into(const K &key, V *buff) {
     this->_decorated_cache->fetch_into(key, buff);
 }
 
-#endif //ALIGNER_CACHE_CACHE_HPP
+#endif //SEALM_CACHE_HPP

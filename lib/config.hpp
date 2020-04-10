@@ -2,8 +2,8 @@
 // Created by evan on 5/9/19.
 //
 
-#ifndef ALIGNER_CACHE_CONFIG_HPP
-#define ALIGNER_CACHE_CONFIG_HPP
+#ifndef SEALM_CONFIG_HPP
+#define SEALM_CONFIG_HPP
 
 #include <experimental/filesystem>
 #include <unordered_map>
@@ -214,4 +214,4 @@ public:
 //    }
 //}
 
-#endif //ALIGNER_CACHE_CONFIG_HPP
+#endif //SEALM_CONFIG_HPP

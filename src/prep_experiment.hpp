@@ -2,8 +2,8 @@
 // Created by evan on 5/9/19.
 //
 
-#ifndef ALIGNER_CACHE_PREP_EXPERIMENT_HPP
-#define ALIGNER_CACHE_PREP_EXPERIMENT_HPP
+#ifndef SEALM_PREP_EXPERIMENT_HPP
+#define SEALM_PREP_EXPERIMENT_HPP
 
 #include "../lib/config.hpp"
 #include "../lib/pipeline.hpp"
@@ -18,8 +18,18 @@ struct ReadOdering : public ValueOrdering< std::pair<uint64_t, Read> > {
 };
 
 /*
- * PREFIX PROPERTY
+ * PREFIX HASHING
  */
+
+class NOPHasher : public DataHasher< std::pair<uint64_t, Read> >{
+public:
+
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
+        return 0;
+    }
+
+    uint64_t _required_table_width() override { return 1; }
+};
 
 class PrefixHasher : public DataHasher< std::pair<uint64_t, Read> >{
 public:
@@ -151,9 +161,10 @@ public:
 };
 
 /*
- * FASTQ PARSER
+ * PROCESSORS
  */
-class FASTQParser : public DataParser<Read, std::string, std::string> {
+
+class FASTQProcessor : public DataProcessor<Read, std::string, std::string> {
     /*
      * Key Extraction Functions
      */
@@ -170,7 +181,7 @@ class FASTQParser : public DataParser<Read, std::string, std::string> {
 };
 
 
-class RetaggingParser : public FASTQParser {
+class RetaggingProcessor : public FASTQProcessor {
     /*
      * Postprocessing functions
      */
@@ -187,6 +198,42 @@ class RetaggingParser : public FASTQParser {
         ss << untagged;
 
         return ss.str();
+    }
+};
+
+/*
+ *  PARSERS
+ */
+
+class FASTQParser : public DataParser<Read> {
+
+    Read _parsing_fn (const std::shared_ptr<std::istream> &fin) override {
+        //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
+        std::string line;
+        std::vector<std::string> lines(4);
+
+        for (int i = 0; i < 4; i++) {
+            std::getline(*fin, line);
+            lines[i] = line;
+        }
+
+        return lines;
+    }
+};
+
+class FASTAParser : public DataParser<Read> {
+
+    Read _parsing_fn (const std::shared_ptr<std::istream> &fin) override {
+        //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
+        std::string line;
+        std::vector<std::string> lines(4);
+
+        for (int i = 0; i < 3; i++) {
+            std::getline(*fin, line);
+            lines[i] = line;
+        }
+
+        return lines;
     }
 };
 
@@ -233,7 +280,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     /*
      * Storage Parameters
      */
-    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p;
+    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > h;
     if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
         bb = std::make_shared<BufferedSortedChain<std::pair<uint64_t, Read> > >();
         ReadOdering order;
@@ -251,15 +298,18 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     if (cfp.contains("hash_func")) {
         std::string hash_func = cfp.get_val("hash_func");
         if (hash_func == "double") {
-            p = std::make_shared<DoublePrefixHasher>();
+            h = std::make_shared<DoublePrefixHasher>();
         } else if (hash_func == "triple") {
-            p = std::make_shared<TriplePrefixHasher>();
+            h = std::make_shared<TriplePrefixHasher>();
         } else {
             // default is single prefix, also specified by "single"
-            p = std::make_shared<PrefixHasher>();
+            h = std::make_shared<PrefixHasher>();
         }
-        bb->set_data_properties(p);
+    } else {
+        h = std::make_shared<NOPHasher>();
     }
+
+    bb->set_data_properties(h);
 
     if (cfp.get_val("chain_switch") == "random") {
         bb->set_chain_switch_mode(ChainSwitch::RANDOM);
@@ -299,6 +349,14 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         io->from_stdin(out);
     }
 
+    std::shared_ptr< DataParser<Read> > dr;
+    dr = std::make_shared<FASTQParser>();
+    if (cfp.contains("file_type")){
+        if (cfp.get_val("file_type") == "fasta"){
+            dr = std::make_shared<FASTAParser>();
+        }
+    }
+    io->set_parser(dr);
 
     pipe->set_io_subsystem(io);
 
@@ -317,11 +375,11 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         }
     }
 
-    std::shared_ptr< DataParser<Read, std::string, std::string> > r = std::make_shared<FASTQParser>();
+    std::shared_ptr< DataProcessor<Read, std::string, std::string> > r = std::make_shared<FASTQProcessor>();
     if (cfp.contains("post_process_func")) {
         std::string post_proc = cfp.get_val("post_process_func");
         if (post_proc == "retag") {
-            r = std::make_shared<RetaggingParser>();
+            r = std::make_shared<RetaggingProcessor>();
         }
     }
 
@@ -329,4 +387,4 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
 }
 
-#endif //ALIGNER_CACHE_PREP_EXPERIMENT_HPP
+#endif //SEALM_PREP_EXPERIMENT_HPP

@@ -2,8 +2,8 @@
 // Created by evan on 4/22/19.
 //
 
-#ifndef ALIGNER_CACHE_TYPES_HPP
-#define ALIGNER_CACHE_TYPES_HPP
+#ifndef SEALM_TYPES_HPP
+#define SEALM_TYPES_HPP
 
 #include <vector>
 #include <string>
@@ -30,4 +30,4 @@ struct CLIOptions {
 typedef std::vector<std::string> Read;
 typedef std::chrono::milliseconds Mills;
 
-#endif //ALIGNER_CACHE_TYPES_HPP
+#endif //SEALM_TYPES_HPP

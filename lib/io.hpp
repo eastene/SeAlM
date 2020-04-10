@@ -2,8 +2,8 @@
 // Created by Evan Stene on 2019-05-02.
 //
 
-#ifndef ALIGNER_CACHE_IO_HPP
-#define ALIGNER_CACHE_IO_HPP
+#ifndef SEALM_IO_HPP
+#define SEALM_IO_HPP
 
 #include <regex>
 #include <string>
@@ -31,6 +31,19 @@ class RequestToEmptyStorageException : public std::exception {
 
 class TimeoutException : public std::exception {
 };
+
+/*
+ * DATA PARSER
+ */
+
+// T - sequence Type (string, vector, etc.)
+template<typename T>
+class DataParser {
+public:
+    // parse from an istream (can add more input sources later)
+    virtual T _parsing_fn(const std::shared_ptr<std::istream> &) = 0;
+};
+
 
 /*
  *
@@ -79,7 +92,7 @@ private:
     std::string _auto_output_ext; // used if modifying extension of input to generate output
 
     // Functors
-    std::function<T(const std::shared_ptr<std::istream> &)> _parsing_fn;
+    std::shared_ptr< DataParser<T> > _parser;
 
     // Private methods
     T parse_single(); // reads a single data point from a single file
@@ -96,9 +109,6 @@ private:
 
 public:
     InterleavedIOScheduler();
-
-    InterleavedIOScheduler(const std::string &input_pattern,
-                           std::function<T(const std::shared_ptr<std::istream> &)> &parse_func);
 
     ~InterleavedIOScheduler();
 
@@ -148,6 +158,8 @@ public:
         _storage_subsystem = other;
     }
 
+    void set_parser(std::shared_ptr< DataParser<T> > &other){_parser = other;}
+
     /*
      * State Descriptors
      */
@@ -173,24 +185,6 @@ public:
 };
 
 /*
- * Functors
- */
-
-template<typename T>
-T default_parser(const std::shared_ptr<std::istream> &fin) {
-    //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
-    std::string line;
-    std::vector<std::string> lines(4);
-
-    for (int i = 0; i < 4; i++) {
-        std::getline(*fin, line);
-        lines[i] = line;
-    }
-
-    return lines;
-}
-
-/*
  * Method Implementations
  */
 
@@ -210,31 +204,7 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _storage_empty_flag.store(true);
     _reading.store(false);
 
-    _parsing_fn = std::function<T(const std::shared_ptr<std::istream> &)>(
-            [](const std::shared_ptr<std::istream> &fin) { return default_parser<T>(fin); });
-
     log_debug("Default IO module initiated.");
-}
-
-template<typename T>
-InterleavedIOScheduler<T>::InterleavedIOScheduler(const std::string &input_pattern,
-                                                  std::function<T(const std::shared_ptr<std::istream> &)> &parse_func) {
-    _max_io_interleave = 1;
-    _max_wait_time = std::chrono::milliseconds(5000);
-    _read_head = 0;
-    _input_pattern = input_pattern;
-    _auto_output_ext = "_out";
-    _out_buff_threshold = 200000;
-
-    _halt_flag.store(false);
-    _async_fill_flag.store(true);
-    _storage_full_flag.store(false);
-    _storage_empty_flag.store(true);
-    _reading.store(false);
-
-    _parsing_fn = parse_func;
-
-    log_debug("IO module initiated.");
 }
 
 template<typename T>
@@ -321,7 +291,7 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
 
 template<typename T>
 T InterleavedIOScheduler<T>::parse_single() {
-    T data = _parsing_fn(_in_streams[_read_head]);
+    T data = _parser->_parsing_fn(_in_streams[_read_head]);
 
     if (_in_streams[_read_head]->eof()) {
         log_info("File " + _inputs[_read_head].second + " exhausted.");
@@ -338,10 +308,10 @@ std::vector<T> InterleavedIOScheduler<T>::parse_multi(uint64_t n) {
     std::vector<T> data;
 
     for (uint64_t i = 0; i < n; i++) {
-        data.push_back(_parsing_fn(_in_streams[_read_head]));
+        data.push_back(_parser->_parsing_fn(_in_streams[_read_head]));
 
         if (_in_streams[_read_head]->eof()) {
-            log_info("File " + _inputs[_read_head] + " exhausted.");
+            log_info("File " + _inputs[_read_head].second + " exhausted.");
             throw IOResourceExhaustedException();
         }
     }
@@ -583,8 +553,8 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
     _input_ext = other._input_ext;
     _auto_output_ext = other._auto_output_ext; // used if modifying extension of input to generate output
 
-    // Functors
-    _parsing_fn = other._parsing_fn;
+    // Parser
+    _parser = other._parser;
 
     // delete other and open up new streams (cannot be copied)
     // delete other;
@@ -608,4 +578,4 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
     log_debug("IO module moved.");
 }
 
-#endif //ALIGNER_CACHE_IO_HPP
+#endif //SEALM_IO_HPP
