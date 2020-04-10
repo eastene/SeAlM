@@ -9,7 +9,7 @@ gcc >7.5.0 | clang >6.0.0
 ### Installation
 ```$xslt
 git clone https://github.com/eastene/SeAlM.git
-cmake CMakeLists.txt ---DCMAKE_BUILD_TYPE=Release
+cmake SeAlM/ --DCMAKE_BUILD_TYPE=Release
 make
 ```
 

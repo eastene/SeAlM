@@ -85,6 +85,7 @@ private:
     std::atomic_bool _storage_full_flag;
     std::atomic_bool _storage_empty_flag;
     std::atomic_bool _async_fill_flag;
+    std::atomic_bool _suppress_output; // don't write outputs (emulates writing to /dev/null)
 
     // Automated file formatting variables
     std::string _input_pattern;
@@ -160,6 +161,8 @@ public:
 
     void set_parser(std::shared_ptr< DataParser<T> > &other){_parser = other;}
 
+    void suppress_output(bool suppress){_suppress_output = suppress;}
+
     /*
      * State Descriptors
      */
@@ -203,6 +206,7 @@ InterleavedIOScheduler<T>::InterleavedIOScheduler() {
     _storage_full_flag.store(false);
     _storage_empty_flag.store(true);
     _reading.store(false);
+    _suppress_output.store(false);
 
     log_debug("Default IO module initiated.");
 }
@@ -250,12 +254,13 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
             dynamic_cast<std::ifstream *>(_in_streams[i - 1].get())->open(obj_path_mut);
 
             // Outputs
-            _outputs.emplace_back(obj_path_mut.replace_extension(_auto_output_ext));
+            if (!_suppress_output) {
+                _outputs.emplace_back(obj_path_mut.replace_extension(_auto_output_ext));
 
-            _out_streams.emplace_back(new std::ofstream);
-            dynamic_cast<std::ofstream *>(_out_streams[i - 1].get())->open(
-                    obj_path_mut.replace_extension(_auto_output_ext));
-
+                _out_streams.emplace_back(new std::ofstream);
+                dynamic_cast<std::ofstream *>(_out_streams[i - 1].get())->open(
+                        obj_path_mut.replace_extension(_auto_output_ext));
+            }
             // Misc
             // TODO: make sure every file extension matches pattern
             _input_ext = fs_obj.path().extension();
@@ -265,9 +270,11 @@ void InterleavedIOScheduler<T>::from_dir(const std::experimental::filesystem::pa
     // safety checks
     assert(i == _inputs.size());
     assert(i == _in_streams.size());
-    assert(i == _outputs.size());
-    assert(i == _out_streams.size());
     assert(i == _seek_poses.size());
+    if (!_suppress_output){
+        assert(i == _outputs.size());
+        assert(i == _out_streams.size());
+    }
 
     log_info(std::to_string(i) + " files matching pattern found.");
 
@@ -284,9 +291,12 @@ void InterleavedIOScheduler<T>::from_stdin(std::string &out) {
     _from_stdin = true;
     _inputs.emplace_back(std::make_pair(0, "NULL"));
     _in_streams.emplace_back(&std::cin);
-    _outputs.emplace_back(out);
-    _out_streams.emplace_back(new std::ofstream);
-    dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(out);
+    // skip if output is being suppressed
+    if(!_suppress_output){
+        _outputs.emplace_back(out);
+        _out_streams.emplace_back(new std::ofstream);
+        dynamic_cast<std::ofstream *>(_out_streams[0].get())->open(out);
+    }
 }
 
 template<typename T>
@@ -402,6 +412,11 @@ void InterleavedIOScheduler<T>::read_until_full() {
 
 template<typename T>
 void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std::string>> &_buff) {
+    // skip if output is being suppressed
+    if(_suppress_output){
+        return;
+    }
+
     if (!_buff.empty()) {
         // write each line in buffer, switching files when necessary
         for (const auto &mtpx_line : _buff) {
@@ -413,6 +428,11 @@ void InterleavedIOScheduler<T>::write_buffer(std::vector<std::pair<uint64_t, std
 template<typename T>
 void
 InterleavedIOScheduler<T>::write_buffer_multiplexed(std::vector<std::pair<uint64_t, std::string>> &_multiplexed_buff) {
+    // skip if output is being suppressed
+    if(_suppress_output){
+        return;
+    }
+
     if (!_multiplexed_buff.empty()) {
         // put buffer in order of files to make writing more efficient
         std::sort(_multiplexed_buff.begin(), _multiplexed_buff.end(),
@@ -495,6 +515,11 @@ std::future<std::vector<std::pair<uint64_t, T> > > InterleavedIOScheduler<T>::re
 
 template<typename T>
 void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line) {
+    // skip if output is being suppressed
+    if(_suppress_output){
+        return;
+    }
+
     _out_buff.emplace_back(std::make_pair(out_ind, line + "\n"));
     if (_out_buff.size() >= _out_buff_threshold) {
         if (_outputs.size() > 1) {
@@ -510,6 +535,11 @@ void InterleavedIOScheduler<T>::write_async(uint64_t out_ind, std::string &line)
 
 template<typename T>
 void InterleavedIOScheduler<T>::flush() {
+    // skip if output is being suppressed
+    if(_suppress_output){
+        return;
+    }
+
     write_buffer(_out_buff);
 }
 
@@ -547,6 +577,7 @@ InterleavedIOScheduler<T> &InterleavedIOScheduler<T>::operator=(const Interleave
     _storage_full_flag.store(other._storage_full_flag);
     _storage_empty_flag.store(other._storage_empty_flag);
     _reading.store(other._reading);
+    _suppress_output.store(other._suppress_output);
 
     // Automated file formatting variables
     _input_pattern = other._input_pattern;

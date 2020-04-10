@@ -165,7 +165,7 @@ public:
      */
 
     friend std::ostream &operator<<(std::ostream &output, const BucketedPipelineManager &B) {
-        output << *B._cache_subsystem << std::endl;
+        B._cache_subsystem->serialize(output);
         return output;
     }
 

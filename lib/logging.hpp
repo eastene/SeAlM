@@ -30,7 +30,7 @@ enum LOG_LEVEL {
 
 // Logging flags
 // TODO: solve variable reset due to not being truly global (singleton?)
-static LOG_LEVEL log_level (LOG_LEVEL::INFO);
+static LOG_LEVEL log_level (LOG_LEVEL::DEBUG);
 static bool show_time = true;
 
 // Logging flag setters SHOULD ONLY BE CALLED FROM MAIN

@@ -128,8 +128,6 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     _input_type = 'q'; // if input_format in ['.fasta', '.fa'] else 'q'
     _read_size = _input_type == 'q' ? 4 : 3;
 
-    _suppress_sam = configs.get_bool_val("suppress_sam");
-
     // aligner process command
     std::stringstream command_s;
     // allow user to specify custom command
@@ -213,8 +211,7 @@ void WrappedMapper::run_alignment() {
 
             next_bucket = read_future.get();
 
-            if (!_suppress_sam)
-                auto write_future = _pipe.write_async(alignments);
+            auto write_future = _pipe.write_async(alignments);
 
             long batch_end = std::chrono::duration_cast<Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
@@ -250,7 +247,7 @@ void WrappedMapper::run_alignment() {
             std::cout << "  Instant Throughput: " << (_bucket_size / elapsed_time) << " r/s\n";
             std::cout << "----------------------------" << std::endl;
 
-            //write_future.wait();
+            write_future.wait();
         }
     } catch (RequestToEmptyStorageException &rtese) {
         // update state
@@ -259,10 +256,10 @@ void WrappedMapper::run_alignment() {
 
         long batch_start = std::chrono::duration_cast<Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-        if (!_suppress_sam) {
-            auto write_future = _pipe.write_async(alignments);
-            write_future.wait();
-        }
+
+        auto write_future = _pipe.write_async(alignments);
+        write_future.wait();
+
         long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         _process_time += (batch_end - batch_start) / 1000.00;

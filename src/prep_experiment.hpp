@@ -11,7 +11,7 @@
 /*
  * READ ORDERING
  */
-struct ReadOdering : public ValueOrdering< std::pair<uint64_t, Read> > {
+struct ReadOrdering : public ValueOrdering< std::pair<uint64_t, Read> > {
     bool operator () (const std::pair<uint64_t, Read> &l, const std::pair<uint64_t, Read> &r) {
         return l.second[1] < r.second[1];
     }
@@ -275,7 +275,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
     std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > h;
     if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
         bb = std::make_shared<BufferedSortedChain<std::pair<uint64_t, Read> > >();
-        ReadOdering order;
+        ReadOrdering order;
         bb->set_ordering(order);
     } else {
         bb = std::make_shared<BufferedBuckets<std::pair<uint64_t, Read> > >();
@@ -326,6 +326,9 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     if (cfp.contains("output_ext"))
         io->set_out_file_ext(cfp.get_val("output_ext"));
+
+    if (cfp.contains("suppress_sam"))
+        io->suppress_output(true);
 
     if (cfp.contains("data_dir")) {
         try {

@@ -150,7 +150,7 @@ public:
     virtual void fetch_into(const K &key, V *buff) = 0;
 
     void serialize(std::ostream &output) const {
-        output << "Hits: " << _hits << " Misses: " << _misses << " Size: " << _keys;
+        output << "Hits: " << _hits << " Misses: " << _misses << " Size: " << _keys << std::endl;
     }
 };
 
@@ -322,6 +322,9 @@ template<typename K, typename V>
 typename std::unordered_map<K, std::unique_ptr<V>>::iterator LRUCache<K, V>::find(const K &key) {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
     auto find_ptr = this->_cache_index.find(key);
+    if (this->_cache_index.find(key) != this->_cache_index.end()){
+        std::cout << "Hit" << std::endl;
+    }
     find_ptr != this->_cache_index.end() ? this->_hits++ : this->_misses++;
     return find_ptr;
 }
