@@ -35,8 +35,7 @@ class PrefixHasher : public DataHasher< std::pair<uint64_t, Read> >{
 public:
 
     uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
-        auto payload = data.second;
-        switch (payload[1][0]) {
+        switch (data.second[1][0]) {
             case 'A':
                 return 0;
             case 'C':
@@ -56,9 +55,8 @@ public:
 class DoublePrefixHasher : public PrefixHasher {
 public:
     uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
-        auto payload = data.second;
         uint64_t hash = 0;
-        switch (payload[1][1]) {
+        switch (data.second[1][1]) {
             case 'A':
                 hash |= 0b00;
                 break;
@@ -76,7 +74,7 @@ public:
                 break;
         }
 
-        switch (payload[1][0]) {
+        switch (data.second[1][0]) {
             case 'A':
                 hash |= 0b0000;
                 break;
@@ -103,10 +101,8 @@ public:
 class TriplePrefixHasher : public PrefixHasher {
 public:
     uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
-        auto payload = data.second;
         uint64_t hash = 0b0;
-        uint64_t s = payload[1].size();
-        switch (payload[1][s - 3]) {
+        switch (data.second[1][0]) {
             case 'A':
             case 'C':
                 hash |= 0b00;
@@ -118,7 +114,7 @@ public:
                 break;
         }
 
-        switch (payload[1][s - 2]) {
+        switch (data.second[1][1]) {
             case 'A':
                 hash |= 0b0000;
                 break;
@@ -136,7 +132,7 @@ public:
                 break;
         }
 
-        switch (payload[1][s - 1]) {
+        switch (data.second[1][2]) {
             case 'A':
                 hash |= 0b000000;
                 break;

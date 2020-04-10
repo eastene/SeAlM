@@ -2,6 +2,7 @@
 // Created by evan on 5/1/19.
 //
 
+#define CATCH_CONFIG_ENABLE_BENCHMARKING
 #include <future>
 #include <chrono>
 
@@ -14,8 +15,7 @@ class PrefixHasher : public DataHasher< std::pair<uint64_t, Read> >{
 public:
 
     uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) {
-        auto payload = data.second;
-        switch (payload[1][0]) {
+        switch (data.second[1][0]) {
             case 'A':
                 return 0;
             case 'C':
@@ -30,6 +30,52 @@ public:
     }
 
     uint64_t _required_table_width(){ return 4; }
+};
+
+class DoublePrefixHasher : public PrefixHasher {
+public:
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+        uint64_t hash = 0;
+        switch (data.second[1][1]) {
+            case 'A':
+                hash |= 0b00;
+                break;
+            case 'C':
+                hash |= 0b01;
+                break;
+            case 'T':
+                hash |= 0b10;
+                break;
+            case 'G':
+                hash |= 0b11;
+                break;
+            default:
+                hash |= 0b11;
+                break;
+        }
+
+        switch (data.second[1][0]) {
+            case 'A':
+                hash |= 0b0000;
+                break;
+            case 'C':
+                hash |= 0b0100;
+                break;
+            case 'T':
+                hash |= 0b1000;
+                break;
+            case 'G':
+                hash |= 0b1100;
+                break;
+            default:
+                hash |= 0b1100;
+                break;
+        }
+
+        return hash;
+    }
+
+    uint64_t _required_table_width() final { return 16; }
 };
 
 TEST_CASE("single bucket created and consumed correctly" "[BufferedBuckets]") {
@@ -267,4 +313,80 @@ TEST_CASE("multiple buckets produced and consumed correctly" "[BufferedBuckets]"
         }
         REQUIRE(is_T);
     }
+}
+
+class NOPHasher : public DataHasher< std::pair<uint64_t, Read> >{
+public:
+
+    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
+        return 0;
+    }
+
+    uint64_t _required_table_width() override { return 1; }
+};
+
+TEST_CASE("benchmark bucket fetching" "[BufferedBuckets]") {
+    int bucket_size = 10;
+    Read r(4, "");
+    BufferedBuckets<std::pair<uint64_t, Read>> bb;
+    std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p = std::make_shared<NOPHasher>();
+    bb.set_data_properties(p);
+    bb.set_bucket_size(bucket_size);
+
+    r[0] = "@test";
+    r[1] = "AAGGC";
+    r[2] = "+";
+    r[3] = "=====";
+
+    bb.set_num_buckets(1);
+    BENCHMARK("insert and request 1 bucket"){
+        for (int i = 0; i < bucket_size; i++) {
+            bb.insert(std::make_pair(i, r));
+        }
+        return bb.next_bucket();
+    };
+
+    bb.set_num_buckets(4);
+    for (int i = 0; i < 3 * bucket_size; i++) {
+        bb.insert(std::make_pair(i, r));
+    }
+    BENCHMARK("insert and request 1 bucket from existing chain"){
+        for (int i = 0; i < bucket_size; i++) {
+            bb.insert(std::make_pair(i, r));
+        }
+        return bb.next_bucket();
+    };
+
+    Read r1 = r;
+    r1[1] = "CAGGC";
+    Read r2 = r;
+    r2[1] = "TAGGC";
+    Read r3 = r;
+    r3[1] = "GAGGC";
+    p = std::make_shared<PrefixHasher>();
+
+    bb.set_data_properties(p);
+    bb.set_num_buckets(4);
+    BENCHMARK("insert and request 1 bucket from wider table"){
+        for (int i = 0; i < bucket_size; i++) {
+            bb.insert(std::make_pair(i, r));
+        }
+        return bb.next_bucket();
+    };
+
+    for (int i = 0; i < bucket_size; i++) {
+        bb.insert(std::make_pair(i, r));
+    }
+    for (int i = 0; i < bucket_size; i++) {
+        bb.insert(std::make_pair(i, r1));
+    }
+    for (int i = 0; i < bucket_size; i++) {
+        bb.insert(std::make_pair(i, r2));
+    }
+    BENCHMARK("insert and request 1 bucket from full table"){
+        for (int i = 0; i < bucket_size; i++) {
+            bb.insert(std::make_pair(i, r3));
+        }
+        return bb.next_bucket();
+    };
 }

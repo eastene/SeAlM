@@ -206,6 +206,7 @@ public:
             _chain_lengths[i] = other._chain_lengths[i];
         }
         _current_chain = other._current_chain;
+        _chain_switch = other._chain_switch;
 
         // Atomic variables
         _alive = other._alive;
@@ -403,6 +404,7 @@ BufferedBuckets<T> &BufferedBuckets<T>::operator=(const BufferedBuckets<T> &othe
     this->_max_buckets = other._max_buckets;
     this->_table_width = other._table_width;
     this->_max_bucket_size = other._max_bucket_size;
+    this->_chain_switch = other._chain_switch;
 
     initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
 
@@ -585,6 +587,7 @@ BufferedSortedChain<T> &BufferedSortedChain<T>::operator=(const BufferedSortedCh
     this->_table_width = other._table_width;
     this->_max_bucket_size = other._max_bucket_size;
     this->_max_chain_len = other._max_chain_len;
+    this->_chain_switch = other._chain_switch;
 
     this->initialize(); // TODO: find a way to move over unique pointer from other bucket to transfer
 
