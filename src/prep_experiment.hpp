@@ -249,16 +249,13 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
      */
 
     std::shared_ptr<InMemCache<std::string, std::string> > c;
+    c = std::make_shared<DummyCache<std::string, std::string> >();
     if (cfp.contains("cache_policy")) {
         std::string cache = cfp.get_val("cache_policy");
         if (cache == "lru") {
             c = std::make_shared<LRUCache<std::string, std::string> >();
         } else if (cache == "mru") {
             c = std::make_shared<MRUCache<std::string, std::string> >();
-//        } else if (cache == "decay"){
-//            c = std::make_shared<ChainDecayCache<std::string, std::string> >();
-        } else {
-            c = std::make_shared<DummyCache<std::string, std::string> >();
         }
 
         if (cfp.contains("cache_decorator")){
@@ -272,10 +269,9 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
             c = w;
         }
-
-        pipe->set_cache_subsystem(c);
-        pipe->register_observer(c);
     }
+    pipe->set_cache_subsystem(c);
+    pipe->register_observer(c);
 
     /*
      * Storage Parameters
@@ -375,15 +371,15 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         }
     }
 
-    std::shared_ptr< DataProcessor<Read, std::string, std::string> > r = std::make_shared<FASTQProcessor>();
+    std::shared_ptr< DataProcessor<Read, std::string, std::string> > r;
+    r = std::make_shared<FASTQProcessor>();
     if (cfp.contains("post_process_func")) {
         std::string post_proc = cfp.get_val("post_process_func");
         if (post_proc == "retag") {
             r = std::make_shared<RetaggingProcessor>();
         }
     }
-
-    pipe->set_parser(r);
+    pipe->set_processor(r);
 
 }
 

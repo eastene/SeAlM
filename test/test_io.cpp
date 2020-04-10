@@ -31,8 +31,8 @@ public:
 };
 
 TEST_CASE("single file read and written correctly" "[InterleavedIOScheduler]") {
-    std::unique_ptr< OrderedSequenceStorage< std::pair<uint64_t, Read> > > bb;
-    bb = std::make_unique< BufferedBuckets< std::pair<uint64_t, Read> > >();
+    std::shared_ptr< OrderedSequenceStorage< std::pair<uint64_t, Read> > > bb;
+    bb = std::make_shared< BufferedBuckets< std::pair<uint64_t, Read> > >();
     std::shared_ptr<DataHasher< std::pair<uint64_t, Read> > > p = std::make_shared<PrefixHasher>();
     bb->set_data_properties(p);
     bb->set_bucket_size(50000);
