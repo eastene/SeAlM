@@ -132,11 +132,17 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     std::stringstream command_s;
     // allow user to specify custom command
     if (configs.contains("command")) {
+        // TODO: get commands with spaces to work (better config parsing)
         command_s << configs.get_val("command");
     } else {
         // supported commands for certain aligners
         if (configs.get_val("aligner") == "seal") {
-            command_s << "seal threads=";
+            if (configs.contains("aligner_path")) {
+                command_s << configs.get_val("aligner_path");
+            } else {
+                command_s << "seal.sh";
+            }
+            command_s << " threads=";
             command_s << configs.get_val("threads");
             command_s << " out=stdout.fq";
             command_s << " ref=";
@@ -144,9 +150,15 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
             if (configs.get_bool_val("interleaved"))
                 command_s << " interleaved=t";
             command_s << " in=stdin.fq";
-            _command = command_s.str();
+            // TODO: parameterize memory allocated to seal
+            command_s << " -Xmx16G";
         } else {
-            command_s << "bowtie2 --mm --no-hd -p ";
+            if (configs.contains("aligner_path")) {
+                command_s << configs.get_val("aligner_path");
+            } else {
+                command_s << "bowtie2";
+            }
+            command_s << " --mm --no-hd -p ";
             if (configs.contains("threads"))
                 command_s << configs.get_val("threads");
             else
@@ -159,9 +171,9 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
                 command_s << " --interleaved -";
             else
                 command_s << " -U -";
-            _command = command_s.str();
         }
     }
+    _command = command_s.str();
 }
 
 void WrappedMapper::run_alignment() {
@@ -201,7 +213,7 @@ void WrappedMapper::run_alignment() {
                     std::chrono::system_clock::now().time_since_epoch()).count();
 
             this_bucket = next_bucket.size();
-            _reads_seen += _bucket_size;
+            _reads_seen += _pipe.current_bucket_size();
 
             read_future = _pipe.read_async();
 
