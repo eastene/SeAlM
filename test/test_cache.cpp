@@ -152,38 +152,53 @@ TEST_CASE("bloom filter cache behaves as expected", "[BFECache]"){
 }
 
 TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
-    int cache_size = 10000;
+    int cache_size = 100;
+    DummyCache<std::string, std::string> baseline;
     LRUCache<std::string, std::string> cache;
     cache.set_max_size(cache_size);
     std::string key = "test_key";
     std::string value = "test_value";
 
+    BENCHMARK("Insert Baseline (Dummy Cache)") {
+           for (int i = 0; i < cache_size; i++) {
+               baseline.insert(key + std::to_string(i), value + std::to_string(i));
+           }
+       };
+
     BENCHMARK("Insert Until Full") {
         for (int i = 0; i < cache_size; i++) {
-            cache.insert(key + std::to_string(i), value + std::to_string(i));
+            cache.insert_no_evict(key + std::to_string(i), value + std::to_string(i));
         }
     };
 
     BENCHMARK("Insert After Full") {
-         for (int i = 0; i < cache_size; i++) {
-             cache.insert(key + std::to_string(i), value + std::to_string(i));
-         }
-    };
-
-    BENCHMARK("Insert After Full - No Evict and Trim") {
        for (int i = 0; i < cache_size; i++) {
            cache.insert_no_evict(key + std::to_string(i), value + std::to_string(i));
        }
        cache.trim();
     };
 
-    cache.clear();
-    key = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC";
-    BENCHMARK("Insert long key, short value"){
+    BENCHMARK("Baseline Search (Dummy Cache)") {
+           for (int i = 0; i < cache_size; i++) {
+               if (baseline.find(key + std::to_string(i)) != baseline.end()){
+                   value = cache.at(key + std::to_string(i));
+               }
+           }
+       };
+
+    BENCHMARK("Search") {
         for (int i = 0; i < cache_size; i++) {
-            cache.insert(key + std::to_string(i), value + std::to_string(i));
+            if(cache.find(key + std::to_string(i)) != cache.end()){
+                value = cache.at(key + std::to_string(i));
+            }
         }
     };
+
+    BENCHMARK("Insert Baseline long key, long value (Dummy Cache)") {
+           for (int i = 0; i < cache_size; i++) {
+               baseline.insert(key + std::to_string(i), value + std::to_string(i));
+           }
+       };
 
     value = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC ++#+#++$#$+#+#++#+##++#+#+@+#$+++@++!@+#+!+#++$%++^^+&+%^+$+%#+%+@+$@+#$+@+#$+!++++@#$_@#$_@))^$%__@";
     BENCHMARK("Insert long key, long value"){
@@ -191,29 +206,20 @@ TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
              cache.insert(key + std::to_string(i), value + std::to_string(i));
          }
     };
-}
 
-TEST_CASE("benchmark cache inserting with bloom filter", "[BFECache]") {
-    int cache_size = 1000;
-    std::string key = "test_key";
-    std::string value = "test_value";
+    BENCHMARK("Baseline Search long key, long value (Dummy Cache)") {
+           for (int i = 0; i < cache_size; i++) {
+               if (baseline.find(key + std::to_string(i)) != baseline.end()){
+                   value = cache.at(key + std::to_string(i));
+               }
+           }
+       };
 
-    BFECache<std::string, std::string> cache(65536, 3, key.size() + 4);
-    std::shared_ptr<CacheIndex<std::string, std::string> > c;
-    c = std::make_shared<LRUCache<std::string, std::string> >();
-    cache.set_cache(c);
-
-    cache.set_max_size(cache_size);
-
-    BENCHMARK("Insert Until Full") {
-       for (int i = 0; i < cache_size; i++) {
-           cache.insert(key + std::to_string(i), value + std::to_string(i));
-       }
-    };
-
-    BENCHMARK("Insert After Full") {
-       for (int i = 0; i < cache_size; i++) {
-           cache.insert(key + std::to_string(i), value + std::to_string(i));
-       }
+    BENCHMARK("Search long key, long value"){
+        for (int i = 0; i < cache_size; i++) {
+            if(cache.find(key + std::to_string(i)) != cache.end()){
+                value = cache.at(key + std::to_string(i));
+            }
+        }
     };
 }

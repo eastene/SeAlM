@@ -15,6 +15,7 @@
 
 #include "types.hpp"
 #include "signaling.hpp"
+#include "logging.hpp"
 
 /*
  *
@@ -84,6 +85,7 @@ protected:
 
     // Size limits
     uint64_t _max_cache_size; // num of elements
+    float _max_load_factor; // max ratio of num hash buckets / num elements
 
     // Metrics
     uint64_t _hits;
@@ -102,9 +104,19 @@ public:
      * Implemented Base Methods 1048576 * 4
      */
 
-    BasicEvictionCache() : _max_cache_size{1048576 * 4}, _hits{0}, _misses{0}, _keys{0} {};
+    BasicEvictionCache() : _max_cache_size{1048576 * 4}, _max_load_factor{0.8}, _hits{0}, _misses{0}, _keys{0} {};
 
-    void set_max_size(uint64_t max_size) { _max_cache_size = max_size; }
+    void set_max_size(uint64_t max_size) {
+        log_warn("Increasing cache bucket count forces rehash, may impact performance.");
+        _max_cache_size = max_size;
+        _cache_index.reserve(_max_cache_size);
+    }
+
+    void set_max_load_factor(float load_factor){
+        log_warn("Decreasing cache load factor forces rehash, may impact performance.");
+        _max_load_factor = load_factor;
+        _cache_index.max_load_factor(load_factor);
+    }
 
     /*
      * State Descriptors
@@ -121,6 +133,8 @@ public:
     uint32_t capacity() { return _max_cache_size; }
 
     uint32_t size() { return _cache_index.size(); }
+
+    uint32_t load_factor() {return _cache_index.load_factor();}
 
     typename std::unordered_map<K, std::unique_ptr<V>>::iterator end() { return _cache_index.end(); }
 
@@ -200,7 +214,8 @@ void DummyCache<K, V>::trim() {}
 
 template<typename K, typename V>
 typename std::unordered_map<K, std::unique_ptr<V>>::iterator DummyCache<K, V>::find(const K &key) {
-    return this->_cache_index.find(key);
+    // always true
+    return this->_cache_index.end(); //this->_cache_index.find(key);
 }
 
 template<typename K, typename V>
@@ -274,13 +289,15 @@ void LRUCache<K, V>::evict() {
 template<typename K, typename V>
 void LRUCache<K, V>::insert(const K &key, const V &value) {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
-    if (this->_cache_index.find(key) == this->_cache_index.end()) {
+    // unordered map's try_emplace returns a pair of iterator to element and bool
+    // indicating whether element already existed (false) or not (true)
+    if (this->_cache_index.try_emplace(key, std::make_unique<V>(value)).second) {
         if (this->_cache_index.size() >= this->_max_cache_size) {
             evict();
         }
+
         _order.emplace_front(key);
         _order_lookup.emplace(key, _order.begin());
-        this->_cache_index.emplace(key, std::make_unique<V>(value));
 
         // only change recency of read on access, not on addition
         this->_keys++;
@@ -290,11 +307,12 @@ void LRUCache<K, V>::insert(const K &key, const V &value) {
 template<typename K, typename V>
 void LRUCache<K, V>::insert_no_evict(const K &key, const V &value) {
     // No lock required, adds data only
-    //std::lock_guard<std::mutex> lock(this->_cache_mutex);
-    if (this->_cache_index.find(key) == this->_cache_index.end()) {
+
+    // unordered map's try_emplace returns a pair of iterator to element and bool
+    // indicating whether element already existed (false) or not (true)
+    if (this->_cache_index.try_emplace(key, std::make_unique<V>(value)).second) {
         _order.emplace_front(key);
         _order_lookup.emplace(key, _order.begin());
-        this->_cache_index.emplace(key, std::make_unique<V>(value));
 
         // only change recency of read on access, not on addition
         this->_keys++;
@@ -322,9 +340,6 @@ template<typename K, typename V>
 typename std::unordered_map<K, std::unique_ptr<V>>::iterator LRUCache<K, V>::find(const K &key) {
     std::lock_guard<std::mutex> lock(this->_cache_mutex);
     auto find_ptr = this->_cache_index.find(key);
-    if (this->_cache_index.find(key) != this->_cache_index.end()){
-        std::cout << "Hit" << std::endl;
-    }
     find_ptr != this->_cache_index.end() ? this->_hits++ : this->_misses++;
     return find_ptr;
 }
