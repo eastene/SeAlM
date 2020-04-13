@@ -137,6 +137,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
     } else {
         // supported commands for certain aligners
         if (configs.get_val("aligner") == "seal") {
+            p.set_interactivity(true);
             if (configs.contains("aligner_path")) {
                 command_s << configs.get_val("aligner_path");
             } else {
@@ -155,6 +156,7 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
             command_s << " rskip=3";
             command_s << " -Xmx80G";
         } else {
+            p.set_interactivity(false);
             if (configs.contains("aligner_path")) {
                 command_s << configs.get_val("aligner_path");
             } else {
@@ -205,7 +207,7 @@ void WrappedMapper::run_alignment() {
     // and this data point should be ignored due to variable time spent loading
     auto read_future = _pipe.read_async();
     auto next_bucket = read_future.get();
-    elapsed_time = call_aligner(_command, next_bucket, &alignments); // call once without timing to load reference
+    elapsed_time = p.call_aligner(_command, next_bucket, &alignments); // call once without timing to load reference
     std::cout << "Reference Load Time: " << elapsed_time << "s\n";
 
     long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -221,7 +223,7 @@ void WrappedMapper::run_alignment() {
 
             //alignments.resize(next_bucket.size());
 
-            elapsed_time = call_aligner(_command, next_bucket, &alignments);
+            elapsed_time = p.call_aligner(_command, next_bucket, &alignments);
 
             next_bucket = read_future.get();
 

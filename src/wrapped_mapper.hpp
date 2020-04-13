@@ -19,6 +19,7 @@
 #include "../lib/types.hpp"
 #include "../lib/io.hpp"
 #include "../lib/config.hpp"
+#include "mapping_utils.hpp"
 
 class WrappedMapper {
 private:
@@ -46,6 +47,9 @@ private:
     // Pipeline manager
     PipelineParams _params;
     BucketedPipelineManager<Read, std::string, std::string> _pipe;
+
+    // Process Manager
+    MapperProcess p;
 
     // metrics
     double _total_time;
