@@ -150,8 +150,10 @@ WrappedMapper::WrappedMapper(ConfigParser &configs) {
             if (configs.get_bool_val("interleaved"))
                 command_s << " interleaved=t";
             command_s << " in=stdin.fq";
-            // TODO: parameterize memory allocated to seal
-            command_s << " -Xmx16G";
+            command_s << " prealloc=t"; // similar to mm for bowtie2 ?
+            // TODO: parameterize these memory-related values to seal
+            command_s << " rskip=3";
+            command_s << " -Xmx80G";
         } else {
             if (configs.contains("aligner_path")) {
                 command_s << configs.get_val("aligner_path");
