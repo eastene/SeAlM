@@ -39,9 +39,6 @@ protected:
 
 public:
     double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std::vector<std::string> *alignments) {
-        //alignments->clear();
-        //alignments->resize(reduced_batch.size());
-
         return align_batch(command, reduced_batch, alignments);
     }
 };

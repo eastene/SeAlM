@@ -22,24 +22,23 @@ private:
     bool _open;
 
     // process
-    auto _proc;
+    std::unique_ptr<subprocess::Popen> _proc;
 
 protected:
     // sub-process methods (to be called by derived classes)
-    template <typename... Args>
     void popen(std::string &command) {
         if (_interactive && _open) {
+            // no need to reopen interactive process
             return;
         }
-
-        auto proc = subprocess::Popen({command}, subprocess::input{subprocess::PIPE},
-                                                    subprocess::output{subprocess::PIPE},
-                                                    subprocess::error{subprocess::PIPE});
-        _proc = proc;
+        _proc = std::make_unique<subprocess::Popen>(subprocess::Popen({command},
+                subprocess::input{subprocess::PIPE},
+                subprocess::output{subprocess::PIPE},
+                subprocess::error{subprocess::PIPE}));
     }
 
     void communicate_and_parse(std::stringstream &in, std::vector<std::string> *out) {
-        auto res = _proc.communicate(in.str().c_str(), in.str().size());
+        auto res = _proc->communicate(in.str().c_str(), in.str().size());
         uint64_t k = 0;
 
         std::stringstream out_ss;
