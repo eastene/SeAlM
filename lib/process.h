@@ -22,29 +22,47 @@ private:
     bool _open;
 
     // process
+    std::string _command;
     std::unique_ptr<subprocess::Popen> _proc;
 
 protected:
     // sub-process methods (to be called by derived classes)
     void popen(std::string &command) {
-        if (_interactive && _open) {
+        _command = command;
+        if (_interactive && !_open) {
             // no need to reopen interactive process
-            return;
+            _proc = std::make_unique<subprocess::Popen>(subprocess::Popen({command},
+                                                                          subprocess::input{subprocess::PIPE},
+                                                                          subprocess::output{subprocess::PIPE},
+                                                                          subprocess::error{subprocess::PIPE}));
+            _open = true;
         }
-        _proc = std::make_unique<subprocess::Popen>(subprocess::Popen({command},
-                subprocess::input{subprocess::PIPE},
-                subprocess::output{subprocess::PIPE},
-                subprocess::error{subprocess::PIPE}));
     }
 
     void communicate_and_parse(std::stringstream &in, std::vector<std::string> *out) {
-        auto res = _proc->communicate(in.str().c_str(), in.str().size());
-        uint64_t k = 0;
+        if (!_interactive){
+            //TODO: find a better work around
+            auto proc = subprocess::Popen({_command},
+                                          subprocess::input{subprocess::PIPE},
+                                          subprocess::output{subprocess::PIPE},
+                                          subprocess::error{subprocess::PIPE});
+            auto res = proc.communicate(in.str().c_str(), in.str().size());
+            uint64_t k = 0;
 
-        std::stringstream out_ss;
-        out_ss << res.first.buf.data();
-        for (std::string line; std::getline(out_ss, line);) {
-            (*out)[k++] = line;
+            std::stringstream out_ss;
+            out_ss << res.first.buf.data();
+            for (std::string line; std::getline(out_ss, line);) {
+                (*out)[k++] = line;
+            }
+        } else {
+            auto res = _proc->communicate(in.str().c_str(), in.str().size());
+            uint64_t k = 0;
+
+            std::stringstream out_ss;
+            out_ss << res.first.buf.data();
+            for (std::string line; std::getline(out_ss, line);) {
+                (*out)[k++] = line;
+            }
         }
     }
 
