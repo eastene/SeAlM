@@ -301,7 +301,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
         for (const auto &mtpx_item : *next_bucket) {
             // extract data
             (*temp_bucket)[i] = mtpx_item.second;
-            key = this->_processor->_extract_key_fn(_current_bucket[i]);
+            key = this->_processor->_extract_key_fn((*temp_bucket)[i]);
 //            _cache_subsystem->fetch_into(this->_processor->_extract_key_fn((*temp_bucket)[i]), tmp);
 //            if (tmp != nullptr){
 //                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
@@ -330,7 +330,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
         for (const auto &mtpx_item : *next_bucket) {
             // extract data
             (*temp_bucket)[i] = mtpx_item.second;
-            key = this->_processor->_extract_key_fn(_current_bucket[i]);
+            key = this->_processor->_extract_key_fn((*temp_bucket)[i]);
             if (duplicate_finder.find(key) != duplicate_finder.end()) {
                 // duplicate found, handle according to compression level
                 switch (_compression_level) {
@@ -471,7 +471,7 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 line_out = this->_processor->_postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
                 _io_subsystem->write_async((*temp_multiplexer)[i].first, line_out);
                 // TODO: figure out why this is so slow
-                _cache_subsystem->insert_no_evict(this->_processor->_extract_key_fn(_current_bucket[i]),
+                _cache_subsystem->insert_no_evict(this->_processor->_extract_key_fn((*temp_bucket)[i]),
                         out[(*temp_multiplexer)[i].second]);
             }
         }

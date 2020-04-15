@@ -194,6 +194,7 @@ TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
         }
     };
 
+    key = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC";
     BENCHMARK("Insert Baseline long key, long value (Dummy Cache)") {
            for (int i = 0; i < cache_size; i++) {
                baseline.insert(key + std::to_string(i), value + std::to_string(i));
@@ -220,6 +221,61 @@ TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
             if(cache.find(key + std::to_string(i)) != cache.end()){
                 value = cache.at(key + std::to_string(i));
             }
+        }
+    };
+}
+
+std::string extract_key_fn(std::string &data) {
+    // std::vector<bool> bin(ceil(data[1].size() / 3.0), 0);
+    char* bin = new char[(data.size() / 2) + data.size() % 2];
+    int j = 0;
+    int i = 0;
+    for (; i < data.size() - 1; i += 2){
+        bin[j] = 0b00000000;
+        bin[j] |= data[i] & 0b00000111;
+        bin[j] <<= 3;
+        bin[j] &= 0b00111000;
+        bin[j++] |= data[i+1] & 0b00000111;
+    }
+    // odd-length strings
+    if (i++ == data.size() - 1){
+        bin[j] = 0b00000000;
+        bin[j] |= data[i] & 0b00000111;
+    }
+
+    std::string out (bin, j);
+    return out;
+}
+
+TEST_CASE("benchmark cache compressed inserting with lru eviction" "[LRUCache]") {
+    int cache_size = 99;
+    LRUCache<std::string, std::string> cache;
+    cache.set_max_size(cache_size);
+    std::string key = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTACA";
+    std::string value = "test_value";
+
+    BENCHMARK("Insert Baseline") {
+       cache.insert(key, value);
+   };
+
+    cache.insert(key, value);
+    BENCHMARK("Baseline Search") {
+         if (cache.find(key) != cache.end()){
+             value = cache.at(key);
+         }
+     };
+
+    cache.clear();
+    BENCHMARK("Insert Compressed") {
+        cache.insert_no_evict(extract_key_fn(key), value);
+   };
+
+    cache.insert(extract_key_fn(key), value);
+    REQUIRE(cache.find(extract_key_fn(key)) != cache.end());
+
+    BENCHMARK("Search Compressed") {
+        if (cache.find(extract_key_fn(key)) != cache.end()){
+                value = cache.at(extract_key_fn(key));
         }
     };
 }

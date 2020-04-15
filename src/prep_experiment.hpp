@@ -181,16 +181,23 @@ class CompreesedFASTQProcessor : public DataProcessor<Read, std::string, std::st
      * Key Extraction Functions
      */
     std::string _extract_key_fn(Read &data) final {
-        // std::vector<bool> bin(ceil(data[1].size() / 3.0), 0);
-        char* bin = new char[ceil(data[1].size() / 3.0)];
-        for (int i = 0; i < data[1].size() - 1; i += 2){
-            bin[i] = 0b00000000;
-            bin[i] |= data[1][i] & 0b00000111;
-            bin[i] <<= 3;
-            bin[i] |= data[1][i+1] & 0b00000111;
+        char* bin = new char[(data[1].size() / 2) + data.size() % 2];
+        int j = 0;
+        int i = 0;
+        for (; i < data[1].size() - 1; i += 2){
+            bin[j] = 0b00000000;
+            bin[j] |= data[1][i] & 0b00000111;
+            bin[j] <<= 3;
+            bin[j] &= 0b00111000;
+            bin[j++] |= data[1][i+1] & 0b00000111;
+        }
+        // odd-length strings
+        if (i++ == data.size() - 1){
+            bin[j] = 0b00000000;
+            bin[j] |= data[1][i] & 0b00000111;
         }
 
-        std::string out (bin);
+        std::string out (bin, j);
         return out;
     }
 
