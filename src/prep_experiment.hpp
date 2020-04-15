@@ -176,6 +176,32 @@ class FASTQProcessor : public DataProcessor<Read, std::string, std::string> {
     }
 };
 
+class CompreesedFASTQProcessor : public DataProcessor<Read, std::string, std::string> {
+    /*
+     * Key Extraction Functions
+     */
+    std::string _extract_key_fn(Read &data) final {
+        // std::vector<bool> bin(ceil(data[1].size() / 3.0), 0);
+        char* bin = new char[ceil(data[1].size() / 3.0)];
+        for (int i = 0; i < data[1].size() - 1; i += 2){
+            bin[i] = 0b00000000;
+            bin[i] |= data[1][i] & 0b00000111;
+            bin[i] <<= 3;
+            bin[i] |= data[1][i+1] & 0b00000111;
+        }
+
+        std::string out (bin);
+        return out;
+    }
+
+    /*
+     * Postprocessing functions
+     */
+    std::string _postprocess_fn(Read &data, std::string &value) override {
+        return value;
+    }
+};
+
 
 class RetaggingProcessor : public FASTQProcessor {
     /*
@@ -372,11 +398,12 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     std::shared_ptr< DataProcessor<Read, std::string, std::string> > r;
     r = std::make_shared<FASTQProcessor>();
-    if (cfp.contains("post_process_func")) {
-        std::string post_proc = cfp.get_val("post_process_func");
-        if (post_proc == "retag") {
-            r = std::make_shared<RetaggingProcessor>();
-        }
+    if (cfp.get_bool_val("retag")) {
+        r = std::make_shared<RetaggingProcessor>();
+    }
+    // TODO: allow compression and retagging
+    else if (cfp.get_bool_val("store_bin")){
+        r = std::make_shared<CompreesedFASTQProcessor>();
     }
     pipe->set_processor(r);
 

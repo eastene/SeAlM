@@ -27,23 +27,27 @@ struct PipelineParams {
     std::string data_dir = std::experimental::filesystem::current_path();
 };
 
+/*
+ * DATA PROCESSOR
+ */
+
+
 // T-dataType, K-cacheKey, V-cacheValue
 template<typename T, typename K, typename V>
 class DataProcessor {
 public:
-    virtual K _extract_key_fn(T &d) = 0; // extract key from data or transform data into key
+    virtual K _extract_key_fn(T &d) = 0; // extract key from data or transform data into key, may convert key
     virtual std::string _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
 };
+
 
 /*
  *
  *  BUCKETED PIPELINE MANAGER
  *
- *  Orchestrates all bucket io, caching, and pre/post-processing
- *
  */
-
-// T-dataType, K-cacheKey, V-cacheValue
+// Orchestrates all bucket io, caching, and pre/post-processing
+// T-dataType, K-cacheKey, S-keyStored V-cacheValue
 template<typename T, typename K, typename V>
 class BucketedPipelineManager : public Observable {
 protected:
@@ -78,7 +82,6 @@ protected:
 
     // Data processing functions template
     std::shared_ptr< DataProcessor<T,K,V> > _processor;
-
 public:
     /*
      * Constructors
@@ -176,7 +179,7 @@ public:
  * Method Implementations
  */
 
-template<typename T, typename K, typename V>
+template<typename T, typename K,typename V>
 BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
     _compression_level = NONE;
     _pipe_clear_flag = false;
@@ -208,12 +211,13 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
         _multiplexer.resize(next_bucket->size());
         // extract data (separate from file id) and compress
         uint64_t i = 0;
+        K key;
         if (_compression_level == NONE) {
             for (const auto &mtpx_item : *next_bucket) {
                 // extract data
                 _current_bucket[i] = mtpx_item.second;
-
-                if (_cache_subsystem->find(this->_processor->_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
+                key = this->_processor->_extract_key_fn(_current_bucket[i]);
+                if (_cache_subsystem->find(key) != _cache_subsystem->end()) {
                     // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
                     _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
                 } else {
@@ -227,16 +231,14 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
             for (const auto &mtpx_item : *next_bucket) {
                 // extract data
                 _current_bucket[i] = mtpx_item.second;
-
-                if (_duplicate_finder.find(this->_processor->_extract_key_fn(_current_bucket[i])) != _duplicate_finder.end()) {
+                key = this->_processor->_extract_key_fn(_current_bucket[i]);
+                if (_duplicate_finder.find(key) != _duplicate_finder.end()) {
                     // duplicate found, handle according to compression level
                     switch (_compression_level) {
                         case CROSS:
                             // only compress if the previous duplicate is not from the same file according to file id
-                            if (_duplicate_finder.at(this->_processor->_extract_key_fn(_current_bucket[i])).first != mtpx_item.first) {
-                                _multiplexer[i] = std::make_pair(mtpx_item.first,
-                                                                 _duplicate_finder.at(
-                                                                         this->_processor->_extract_key_fn(_current_bucket[i])).second);
+                            if (_duplicate_finder.at(key).first != mtpx_item.first) {
+                                _multiplexer[i] = std::make_pair(mtpx_item.first, _duplicate_finder.at(key).second);
                             } else {
                                 // otherwise count as a unique entry
                                 _unique_entries.emplace_back(mtpx_item.second);
@@ -245,14 +247,12 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
                             break;
                         case FULL:
                             // compress if any duplication detected
-                            _multiplexer[i] = std::make_pair(mtpx_item.first,
-                                                             _duplicate_finder.at(
-                                                                     this->_processor->_extract_key_fn(_current_bucket[i])).second);
+                            _multiplexer[i] = std::make_pair(mtpx_item.first, _duplicate_finder.at(key).second);
                             break;
                         default:
                             break;
                     }
-                } else if (_cache_subsystem->find(this->_processor->_extract_key_fn(_current_bucket[i])) != _cache_subsystem->end()) {
+                } else if (_cache_subsystem->find(key) != _cache_subsystem->end()) {
                     // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
                     _multiplexer[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
                 } else {
@@ -262,8 +262,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::read() {
 
                     // store for later lookup to detect further duplicates
                     if (_compression_level > NONE) {
-                        _duplicate_finder.emplace(this->_processor->_extract_key_fn(_current_bucket[i]),
-                                                  std::make_pair(mtpx_item.first, _unique_entries.size() - 1));
+                        _duplicate_finder.emplace(key, std::make_pair(mtpx_item.first, _unique_entries.size() - 1));
                     }
                 }
                 i++;
@@ -297,11 +296,12 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
 
     uint64_t i = 0;
     V *tmp = nullptr;
+    K key;
     if (_compression_level == CompressionLevel::NONE) {
         for (const auto &mtpx_item : *next_bucket) {
             // extract data
             (*temp_bucket)[i] = mtpx_item.second;
-
+            key = this->_processor->_extract_key_fn(_current_bucket[i]);
 //            _cache_subsystem->fetch_into(this->_processor->_extract_key_fn((*temp_bucket)[i]), tmp);
 //            if (tmp != nullptr){
 //                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
@@ -311,11 +311,11 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
 //                (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
 //            }
 
-            if (_cache_subsystem->find(this->_processor->_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
+            if (_cache_subsystem->find(key) != _cache_subsystem->end()) {
                 // TODO make this atomic
                 // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
                 (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-                temp_cache_hits->push(_cache_subsystem->at(this->_processor->_extract_key_fn((*temp_bucket)[i])));
+                temp_cache_hits->push(_cache_subsystem->at(key));
             } else {
                 // unique, non-cached value return as part of compressed bucket
                 unique_entries.emplace_back(mtpx_item.second);
@@ -330,16 +330,14 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
         for (const auto &mtpx_item : *next_bucket) {
             // extract data
             (*temp_bucket)[i] = mtpx_item.second;
-
-            if (duplicate_finder.find(this->_processor->_extract_key_fn((*temp_bucket)[i])) != duplicate_finder.end()) {
+            key = this->_processor->_extract_key_fn(_current_bucket[i]);
+            if (duplicate_finder.find(key) != duplicate_finder.end()) {
                 // duplicate found, handle according to compression level
                 switch (_compression_level) {
                     case CompressionLevel::CROSS:
                         // only compress if the previous duplicate is not from the same file according to file id
-                        if (duplicate_finder.at(this->_processor->_extract_key_fn((*temp_bucket)[i])).first != mtpx_item.first) {
-                            (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first,
-                                                                    duplicate_finder.at(
-                                                                            this->_processor->_extract_key_fn((*temp_bucket)[i])).second);
+                        if (duplicate_finder.at(key).first != mtpx_item.first) {
+                            (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, duplicate_finder.at(key).second);
                         } else {
                             // otherwise count as a unique entry
                             unique_entries.emplace_back(mtpx_item.second);
@@ -348,9 +346,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
                         break;
                     case CompressionLevel::FULL:
                         // compress if any duplication detected
-                        (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first,
-                                                                duplicate_finder.at(
-                                                                        this->_processor->_extract_key_fn((*temp_bucket)[i])).second);
+                        (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, duplicate_finder.at(key).second);
                         break;
                     default:
                         break;
@@ -365,11 +361,11 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
 //                    (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, unique_entries.size() - 1);
 //                }
 
-                if (_cache_subsystem->find(this->_processor->_extract_key_fn((*temp_bucket)[i])) != _cache_subsystem->end()) {
+                if (_cache_subsystem->find(key) != _cache_subsystem->end()) {
                     // TODO make this atomic
                     // if not duplicate but found in cache (or duplicate but all exist in cache), flag for lookup later
                     (*temp_multiplexer)[i] = std::make_pair(mtpx_item.first, UINT64_MAX);
-                    temp_cache_hits->push(_cache_subsystem->at(this->_processor->_extract_key_fn((*temp_bucket)[i])));
+                    temp_cache_hits->push(_cache_subsystem->at(key));
                 } else {
                     // unique, non-cached value return as part of compressed bucket
                     unique_entries.emplace_back(mtpx_item.second);
@@ -415,7 +411,7 @@ std::future<std::vector<T> > BucketedPipelineManager<T, K, V>::read_async() {
     return future;
 }
 
-template<typename T, typename K, typename V>
+template<typename T, typename K,  typename V>
 bool BucketedPipelineManager<T, K, V>::write(std::vector<V> &out) {
     std::lock_guard<std::mutex> lock(_pipe_mutex);
     if (!_pipe_clear_flag) {
@@ -423,16 +419,17 @@ bool BucketedPipelineManager<T, K, V>::write(std::vector<V> &out) {
         // should have exactly as many unique enties as values
         assert(_unique_entries.size() == out.size());
         // de-multiplex using multiplexer built when reading
+        K key;
         for (uint64_t i = 0; i < _current_bucket.size(); i++) {
+            key = _encode(this->_processor->_extract_key_fn(_current_bucket[i]));
             if (_multiplexer[i].second == UINT64_MAX) {
                 // found in cache earlier, report cached value
-                line_out = this->_processor->_postprocess_fn(_current_bucket[i],
-                                           _cache_subsystem->at(this->_processor->_extract_key_fn(_current_bucket[i])));
+                line_out = this->_processor->_postprocess_fn(_current_bucket[i], _cache_subsystem->at(key));
                 _io_subsystem->write_async(_multiplexer[i].first, line_out);
             } else {
                 // otherwise, write value indicated by multiplexer
                 line_out = this->_processor->_postprocess_fn(_current_bucket[i], out[_multiplexer[i].second]);
-                _cache_subsystem->insert_no_evict(this->_processor->_extract_key_fn(_current_bucket[i]), out[_multiplexer[i].second]);
+                _cache_subsystem->insert_no_evict(key, out[_multiplexer[i].second]);
                 _io_subsystem->write_async(_multiplexer[i].first, line_out);
             }
         }
@@ -474,8 +471,8 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
                 line_out = this->_processor->_postprocess_fn((*temp_bucket)[i], out[(*temp_multiplexer)[i].second]);
                 _io_subsystem->write_async((*temp_multiplexer)[i].first, line_out);
                 // TODO: figure out why this is so slow
-                _cache_subsystem->insert_no_evict(this->_processor->_extract_key_fn((*temp_bucket)[i]),
-                                                  out[(*temp_multiplexer)[i].second]);
+                _cache_subsystem->insert_no_evict(this->_processor->_extract_key_fn(_current_bucket[i]),
+                        out[(*temp_multiplexer)[i].second]);
             }
         }
         notify(1);
