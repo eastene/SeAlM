@@ -187,7 +187,7 @@ public:
 
     void insert_no_evict(const K &key, const V &value) override;
 
-    void trim();
+    void trim() override;
 
     typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) override;
 
@@ -255,7 +255,7 @@ public:
 
     void insert_no_evict(const K &key, const V &value) override;
 
-    void trim();
+    void trim() override;
 
     typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) override;
 
@@ -398,7 +398,7 @@ public:
 
     void insert_no_evict(const K &key, const V &value) override;
 
-    void trim();
+    void trim() override;
 };
 
 template<typename K, typename V>
@@ -520,7 +520,7 @@ public:
 
     void insert_no_evict(const K &key, const V &value) override;
 
-    void trim();
+    void trim() override;
 
     typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) override;
 
