@@ -184,7 +184,7 @@ void WrappedMapper::run_alignment() {
     double elapsed_time = 0.0;
     long this_bucket = 0;
 
-    std::vector<const char*> alignments(_bucket_size);
+    std::vector<std::string> alignments(_bucket_size);
     initialize_alignment();
 
     std::ofstream mfile;

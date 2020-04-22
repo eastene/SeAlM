@@ -39,7 +39,7 @@ protected:
         }
     }
 
-    void communicate_and_parse(std::stringstream &in, std::vector<const char*> *out) {
+    void communicate_and_parse(std::stringstream &in, std::vector<std::string> *out) {
         if (!_interactive){
             //TODO: find a better work around
             auto proc = subprocess::Popen({_command},
@@ -52,7 +52,7 @@ protected:
             std::stringstream out_ss;
             out_ss << res.first.buf.data();
             for (std::string line; std::getline(out_ss, line);) {
-                (*out)[k++] = line.c_str();
+                (*out)[k++] = line;
             }
         } else {
             auto res = _proc->communicate(in.str().c_str(), in.str().size());
@@ -61,7 +61,7 @@ protected:
             std::stringstream out_ss;
             out_ss << res.first.buf.data();
             for (std::string line; std::getline(out_ss, line);) {
-                (*out)[k++] = line.c_str();
+                (*out)[k++] = line;
             }
         }
     }

@@ -38,7 +38,7 @@ class DataProcessor {
 public:
     virtual ~DataProcessor(){};
     virtual K _extract_key_fn(T &d) = 0; // extract key from data or transform data into key, may convert key
-    virtual const char* _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
+    virtual std::string _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
 };
 
 

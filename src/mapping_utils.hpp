@@ -16,7 +16,7 @@
 class MapperProcess : public SubProccessAdapter {
 protected:
     double
-    align_batch(std::string &command, std::vector<Read> &batch, std::vector<const char*> *alignments) {
+    align_batch(std::string &command, std::vector<Read> &batch, std::vector<std::string> *alignments) {
         std::stringstream ss;
         for (Read read : batch) {
             ss << read[0] << '\n';
@@ -38,7 +38,7 @@ protected:
     }
 
 public:
-    double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std::vector<const char*> *alignments) {
+    double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std::vector<std::string> *alignments) {
         return align_batch(command, reduced_batch, alignments);
     }
 };

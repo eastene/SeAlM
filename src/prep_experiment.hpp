@@ -215,27 +215,28 @@ public:
  * PROCESSORS
  */
 
-class FASTQProcessor : public DataProcessor<Read, const char *, const char *> {
+class FASTQProcessor : public DataProcessor<Read, std::string, std::string> {
     /*
      * Key Extraction Functions
      */
-    const char *_extract_key_fn(Read &data) final {
-        return data[1];
+    std::string _extract_key_fn(Read &data) final {
+        std::string s(data[1]);
+        return s;
     }
 
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) override {
+    std::string _postprocess_fn(Read &data, std::string &value) override {
         return value;
     }
 };
 
-class CompreesedFASTQProcessor : public DataProcessor<Read, const char *, const char *> {
+class CompressedFASTQProcessor : public DataProcessor<Read, std::string, std::string> {
     /*
      * Key Extraction Functions
      */
-    const char *_extract_key_fn(Read &data) final {
+    std::string _extract_key_fn(Read &data) final {
         int len = strlen(data[1]);
         char *bin = new char[(len/ 2) + data.size() % 2];
         int j = 0;
@@ -253,24 +254,24 @@ class CompreesedFASTQProcessor : public DataProcessor<Read, const char *, const 
             bin[j] |= data[1][i] & 0b00000111;
         }
 
-        // std::string out (bin);
-        return bin;
+        std::string out (bin);
+        return out;
     }
 
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) override {
+    std::string _postprocess_fn(Read &data, std::string &value) override {
         return value;
     }
-};
+} [[maybe_unused]];
 
 
 class RetaggingProcessor : public FASTQProcessor {
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) final {
+    std::string _postprocess_fn(Read &data, std::string &value) final {
         std::stringstream ss;
         std::string tag_line(data[0]);
         std::string tag = tag_line.substr(1, tag_line.find(' ') - 1);
@@ -284,7 +285,7 @@ class RetaggingProcessor : public FASTQProcessor {
         ss << "\t";
         ss << untagged;
 
-        return ss.str().c_str();
+        return ss.str();
     }
 };
 
@@ -294,39 +295,36 @@ class RetaggingProcessor : public FASTQProcessor {
 
 class FASTQParser : public DataParser<Read> {
 
-    Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
-        //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
-        std::string line;
-        std::vector<const char *> lines(4);
-
+    void _parsing_fn(const std::shared_ptr<std::istream> &in, Read* out) override {
+        //TODO make read length variable
+        out->resize(4);
+        char * line;
         for (int i = 0; i < 4; i++) {
-            std::getline(*fin, line);
-            lines[i] = line.c_str();
+            line = new char[151];
+            in->getline(line, 151, '\n');
+            // std::getline(*in, line);
+            (*out)[i] = line;
         }
-
-        return lines;
     }
 };
 
 class FASTAParser : public DataParser<Read> {
 
-    Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
+    void _parsing_fn(const std::shared_ptr<std::istream> &in, Read* out) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        std::vector<const char *> lines(4);
+        out->resize(2);
 
-        for (int i = 0; i < 3; i++) {
-            std::getline(*fin, line);
-            lines[i] = line.c_str();
+        for (int i = 0; i < 2; i++) {
+            std::getline(*in, line);
+            out->operator[](i) = line.c_str();;
         }
-
-        return lines;
     }
 };
 
 // Configure the data pipeline appropriately according to the config file
 // T-dataType, K-cacheKey, V-cacheValue
-void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char *, const char *> *pipe) {
+void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
     std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
     std::shared_ptr<InterleavedIOScheduler<Read>> io;
     io = std::make_shared<InterleavedIOScheduler<Read>>();
@@ -335,22 +333,22 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
      * Cache Parameters
      */
 
-    std::shared_ptr<CacheIndex<const char *, const char *> > c;
-    c = std::make_shared<DummyCache<const char *, const char *> >();
+    std::shared_ptr<CacheIndex<std::string, std::string> > c;
+    c = std::make_shared<DummyCache<std::string, std::string> >();
     if (cfp.contains("cache_policy")) {
         std::string cache = cfp.get_val("cache_policy");
         if (cache == "lru") {
-            c = std::make_shared<LRUCache<const char *, const char *> >();
+            c = std::make_shared<LRUCache<std::string, std::string> >();
         } else if (cache == "mru") {
-            c = std::make_shared<MRUCache<const char *, const char *> >();
+            c = std::make_shared<MRUCache<std::string, std::string> >();
         }
 
         if (cfp.contains("cache_decorator")) {
             std::string dec = cfp.get_val("cache_decorator");
-            std::shared_ptr<CacheDecorator<const char *, const char *> > w;
+            std::shared_ptr<CacheDecorator<std::string, std::string> > w;
 
             if (dec == "bloom_filter") {
-                w = std::make_shared<BFECache<const char *, const char *> >();
+                w = std::make_shared<BFECache<std::string, std::string> >();
                 w->set_cache(c);
             }
 
@@ -463,14 +461,14 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
         }
     }
 
-    std::shared_ptr<DataProcessor<Read, const char *, const char *> > r;
+    std::shared_ptr<DataProcessor<Read, std::string, std::string> > r;
     r = std::make_shared<FASTQProcessor>();
     if (cfp.get_bool_val("retag")) {
         r = std::make_shared<RetaggingProcessor>();
     }
         // TODO: allow compression and retagging
     else if (cfp.get_bool_val("store_bin")) {
-        r = std::make_shared<CompreesedFASTQProcessor>();
+        r = std::make_shared<CompressedFASTQProcessor>();
     }
     pipe->set_processor(r);
 
