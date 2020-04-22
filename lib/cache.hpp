@@ -106,6 +106,8 @@ public:
 
     BasicEvictionCache() : _max_cache_size{1048576 * 4}, _max_load_factor{0.8}, _hits{0}, _misses{0}, _keys{0} {};
 
+    virtual ~BasicEvictionCache(){};
+
     void set_max_size(uint64_t max_size) {
         log_warn("Increasing cache bucket count forces rehash, may impact performance.");
         _max_cache_size = max_size;
@@ -150,7 +152,7 @@ public:
 
     virtual void insert_no_evict(const K &key, const V &value) = 0;
 
-    virtual void trim() = 0;
+    // virtual void trim() = 0;
 
     virtual typename std::unordered_map<K, std::unique_ptr<V>>::iterator find(const K &key) = 0;
 
@@ -158,7 +160,7 @@ public:
 
     virtual V &operator[](K &key) = 0;
 
-    virtual void clear() = 0;
+    // virtual void clear() = 0;
 
     // TODO: find more consistent way to do this?
     virtual void fetch_into(const K &key, V *buff) = 0;
@@ -195,7 +197,7 @@ public:
 
     V &operator[](K &key) override;
 
-    void clear() {};
+    void clear() override {};
 
     void fetch_into(const K &key, V *buff) override;
 };
@@ -279,7 +281,7 @@ LRUCache<K, V>::LRUCache() : BasicEvictionCache<K, V>() {
 template<typename K, typename V>
 void LRUCache<K, V>::evict() {
     // not publically facing, doesn't require lock (may change in future)
-    std::string key = _order.back();
+    K key = _order.back();
     _order.pop_back();
     _order_lookup.erase(key);
     this->_cache_index.erase(key);
@@ -375,7 +377,7 @@ void LRUCache<K, V>::fetch_into(const K &key, V *buff) {
         _order.erase(_order_lookup[key]);
         _order.emplace_front(key);
         _order_lookup.insert_or_assign(key, _order.begin());
-        buff = new std::string(*(this->_cache_index.at(key))); //*this->_cache_index.at(key);
+        buff = new V(*(this->_cache_index.at(key))); //*this->_cache_index.at(key);
     } else {
         // TODO: find a safer return value
         buff = nullptr;
@@ -403,7 +405,7 @@ public:
 
 template<typename K, typename V>
 void MRUCache<K, V>::evict() {
-    std::string key = this->_order.front();
+    K key = this->_order.front();
     this->_order.pop_front();
     this->_order_lookup.erase(key);
     this->_cache_index.erase(key);
@@ -514,7 +516,7 @@ public:
 
     void set_bloom_params(uint32_t m, uint16_t k, uint16_t data_len){_m=m; _k=k; _data_len=data_len; initialize_bloom_filter();}
 
-    void update(int event){this->_decorated_cache->update(event);}
+    void update(int event) override {this->_decorated_cache->update(event);}
 
     void insert(const K &key, const V &value) override;
 

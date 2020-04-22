@@ -2,12 +2,10 @@
 // Created by evan on 4/19/19.
 //
 
-#include <thread>
 #include <tuple>
 #include <iostream>
 #include <experimental/filesystem>
 #include "wrapped_mapper.hpp"
-#include "mapping_utils.hpp"
 #include "prep_experiment.hpp"
 
 void WrappedMapper::initialize_alignment() {
@@ -186,7 +184,7 @@ void WrappedMapper::run_alignment() {
     double elapsed_time = 0.0;
     long this_bucket = 0;
 
-    std::vector<std::string> alignments(_bucket_size);
+    std::vector<const char*> alignments(_bucket_size);
     initialize_alignment();
 
     std::ofstream mfile;

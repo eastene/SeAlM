@@ -36,8 +36,9 @@ struct PipelineParams {
 template<typename T, typename K, typename V>
 class DataProcessor {
 public:
+    virtual ~DataProcessor(){};
     virtual K _extract_key_fn(T &d) = 0; // extract key from data or transform data into key, may convert key
-    virtual std::string _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
+    virtual const char* _postprocess_fn(T &d, V &v) = 0; // transform data and/or value to string for writing to file
 };
 
 
@@ -183,7 +184,7 @@ template<typename T, typename K,typename V>
 BucketedPipelineManager<T, K, V>::BucketedPipelineManager() {
     _compression_level = NONE;
     _pipe_clear_flag = false;
-    _cache_subsystem = std::make_unique<DummyCache<K, V> >();
+    _cache_subsystem = std::make_shared<DummyCache<K, V> >();
 }
 
 template<typename T, typename K, typename V>
@@ -295,7 +296,7 @@ std::vector<T> BucketedPipelineManager<T, K, V>::lock_free_read() {
     temp_multiplexer->resize(next_bucket->size());
 
     uint64_t i = 0;
-    V *tmp = nullptr;
+    // V *tmp = nullptr;
     K key;
     if (_compression_level == CompressionLevel::NONE) {
         for (const auto &mtpx_item : *next_bucket) {
@@ -459,7 +460,8 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
         // should have exactly as many unique enties as values
         // assert(_unique_entries.size() == out.size()); have to ignore for lock free
         // de-multiplex using multiplexer built when reading
-        long w_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        // long w_start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
         for (uint64_t i = 0; i < temp_bucket->size(); i++) {
             if ((*temp_multiplexer)[i].second == UINT64_MAX) {
                 // found in cache earlier, report cached value
@@ -478,8 +480,11 @@ bool BucketedPipelineManager<T, K, V>::lock_free_write(std::vector<V> &out) {
         notify(1);
         if (_cache_subsystem->size() > _cache_subsystem->capacity())
             _cache_subsystem->trim();
-        long w_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
-        std::cout << "Write time: " << (w_end - w_start) << std::endl;
+        // long w_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+        // std::cout << "Write time: " << (w_end - w_start) << std::endl;
+        return true;
+    } else {
+        return false;
     }
 }
 

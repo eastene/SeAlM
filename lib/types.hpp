@@ -27,7 +27,7 @@ struct CLIOptions {
 };
 
 
-typedef std::vector<std::string> Read;
+typedef std::vector<const char*> Read;
 typedef std::chrono::milliseconds Mills;
 
 #endif //SEALM_TYPES_HPP

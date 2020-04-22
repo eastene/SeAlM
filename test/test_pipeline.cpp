@@ -8,7 +8,7 @@
 #include "../lib/types.hpp"
 
 TEST_CASE("single file read and written correctly" "[BucketedPipelineManager]") {
-    BucketedPipelineManager<Read, std::string, std::string> pipeline;
+    BucketedPipelineManager<Read, const char*, const char*> pipeline;
 
 
 }

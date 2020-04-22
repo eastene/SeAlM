@@ -46,7 +46,7 @@ private:
 
     // Pipeline manager
     PipelineParams _params;
-    BucketedPipelineManager<Read, std::string, std::string> _pipe;
+    BucketedPipelineManager<Read, const char*, const char*> _pipe;
 
     // Process Manager
     MapperProcess p;

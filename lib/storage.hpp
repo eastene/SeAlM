@@ -37,6 +37,7 @@ enum ChainSwitch {
 template<typename T>
 class DataHasher{
 public:
+    virtual ~DataHasher(){};
     virtual uint64_t _hash_fn(const T &d) = 0;
     virtual uint64_t _required_table_width() = 0;
 };
@@ -108,6 +109,8 @@ public:
         _table_width = 1;
         _max_bucket_size = 100000;
     }
+
+    virtual ~OrderedSequenceStorage(){};
 
     /*
      * Consumption Methods
@@ -249,19 +252,19 @@ public:
      * Consumption Methods
      */
 
-    virtual bool insert(const T &data);
+    virtual bool insert(const T &data) override;
 
     /*
      * Production Methods
      */
 
-    virtual std::unique_ptr<std::vector<T>> next_bucket();
+    virtual std::unique_ptr<std::vector<T>> next_bucket() override;
 
     /*
      * Forcing Methods
      */
 
-    virtual void flush();
+    virtual void flush() override;
 
     /*
      * Operator Overloads

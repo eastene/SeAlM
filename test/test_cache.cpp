@@ -225,6 +225,33 @@ TEST_CASE("benchmark cache inserting with lru eviction" "[LRUCache]"){
     };
 }
 
+TEST_CASE("benchmark cache inserting with cstrings" "[LRUCache]"){
+    int cache_size = 100;
+    LRUCache<const char*, const char*> ccache;
+    LRUCache<std::string, std::string> cache;
+    cache.set_max_size(cache_size);
+    std::string key = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC";
+    std::string value = "ACGCATCAGCTACAGGAGCTCCTAGAGCGCGAGCGAGCATTACACATTACTCATCTACTAGCAGCGACATCAGCAGCGACAGAGAGAGAGTTTAATTTAC ++#+#++$#$+#+#++#+##++#+#+@+#$+++@++!@+#+!+#++$%++^^+&+%^+$+%#+%+@+$@+#$+@+#$+!++++@#$_@#$_@))^$%__@";
+
+    BENCHMARK("insert string"){
+        cache.insert(key, value);
+    };
+
+    BENCHMARK("insert cstring") {
+        ccache.insert(key.c_str(), value.c_str());
+    };
+
+    BENCHMARK("search string"){
+          if (cache.find(key) != cache.end())
+              cache.at(key);
+      };
+
+    BENCHMARK("search cstring"){
+      if (ccache.find(key.c_str()) != ccache.end())
+          ccache.at(key.c_str());
+  };
+}
+
 std::string extract_key_fn(std::string &data) {
     // std::vector<bool> bin(ceil(data[1].size() / 3.0), 0);
     char* bin = new char[(data.size() / 2) + data.size() % 2];

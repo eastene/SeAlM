@@ -162,7 +162,17 @@ private:
     std::vector<float> _limits;
 
 public:
-    GCHasher(uint64_t bins) {
+
+    explicit GCHasher() {
+        _bins = 4;
+        // 100 is implied, dont need to store
+        _limits.resize(_bins - 1);
+        for (int i = 0; i < _bins - 1; i++) {
+            _limits[i] = (1.0 / _bins) * (i + 1);
+        }
+    }
+
+    explicit GCHasher(uint64_t bins) {
         _bins = bins;
         // 100 is implied, dont need to store
         _limits.resize(_bins - 1);
@@ -175,16 +185,17 @@ public:
         uint32_t gc_count = 0;
         uint8_t val = 0;
         float gc_content = 0.0;
-        for (const auto &c : data.second[1]) {
+        int len = strlen(data.second[1]);
+        for (int i = 0; i < len; i++) {
             // Using ascii values of A,G,C,T, and N
             // N is not counted as GC
-            val = c & 0b00001010;
+            val = data.second[1][i] & 0b00001010;
             gc_count += ((val >> 1) & 0b00000001) ^ (val >> 3);
             // version that counts N in GC
             // gc_count =  (data.second[1][i] & 0b00000010) >> 1;
         }
 
-        gc_content = gc_count / data.second[1].size();
+        gc_content = gc_count / len;
 
         // find bin the read belongs to
         for (uint64_t i = 0; i < _limits.size(); i++) {
@@ -196,37 +207,40 @@ public:
         // last bin (upper limit of 100%)
         return _bins - 1;
     }
+
+    uint64_t _required_table_width() final { return _bins; }
 };
 
 /*
  * PROCESSORS
  */
 
-class FASTQProcessor : public DataProcessor<Read, std::string, std::string> {
+class FASTQProcessor : public DataProcessor<Read, const char *, const char *> {
     /*
      * Key Extraction Functions
      */
-    std::string _extract_key_fn(Read &data) final {
+    const char *_extract_key_fn(Read &data) final {
         return data[1];
     }
 
     /*
      * Postprocessing functions
      */
-    std::string _postprocess_fn(Read &data, std::string &value) override {
+    const char *_postprocess_fn(Read &data, const char *&value) override {
         return value;
     }
 };
 
-class CompreesedFASTQProcessor : public DataProcessor<Read, std::string, std::string> {
+class CompreesedFASTQProcessor : public DataProcessor<Read, const char *, const char *> {
     /*
      * Key Extraction Functions
      */
-    std::string _extract_key_fn(Read &data) final {
-        char *bin = new char[(data[1].size() / 2) + data.size() % 2];
+    const char *_extract_key_fn(Read &data) final {
+        int len = strlen(data[1]);
+        char *bin = new char[(len/ 2) + data.size() % 2];
         int j = 0;
         int i = 0;
-        for (; i < data[1].size() - 1; i += 2) {
+        for (; i < len - 1; i += 2) {
             bin[j] = 0b00000000;
             bin[j] |= data[1][i] & 0b00000111;
             bin[j] <<= 3;
@@ -239,14 +253,14 @@ class CompreesedFASTQProcessor : public DataProcessor<Read, std::string, std::st
             bin[j] |= data[1][i] & 0b00000111;
         }
 
-        std::string out(bin, j);
-        return out;
+        // std::string out (bin);
+        return bin;
     }
 
     /*
      * Postprocessing functions
      */
-    std::string _postprocess_fn(Read &data, std::string &value) override {
+    const char *_postprocess_fn(Read &data, const char *&value) override {
         return value;
     }
 };
@@ -256,19 +270,21 @@ class RetaggingProcessor : public FASTQProcessor {
     /*
      * Postprocessing functions
      */
-    std::string _postprocess_fn(Read &data, std::string &value) final {
+    const char *_postprocess_fn(Read &data, const char *&value) final {
         std::stringstream ss;
-        std::string tag = data[0].substr(1, data[0].find(' ') - 1);
-        unsigned long sp1 = value.find('\t');
+        std::string tag_line(data[0]);
+        std::string tag = tag_line.substr(1, tag_line.find(' ') - 1);
+        std::string val(value);
+        unsigned long sp1 = val.find('\t');
         // TODO: replace qual score with one from this read
         //unsigned long sp2 = alignment.find('\t', 9);
-        std::string untagged = value.substr(sp1);
+        std::string untagged = val.substr(sp1);
 
         ss << tag;
         ss << "\t";
         ss << untagged;
 
-        return ss.str();
+        return ss.str().c_str();
     }
 };
 
@@ -281,11 +297,11 @@ class FASTQParser : public DataParser<Read> {
     Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        std::vector<std::string> lines(4);
+        std::vector<const char *> lines(4);
 
         for (int i = 0; i < 4; i++) {
             std::getline(*fin, line);
-            lines[i] = line;
+            lines[i] = line.c_str();
         }
 
         return lines;
@@ -297,11 +313,11 @@ class FASTAParser : public DataParser<Read> {
     Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        std::vector<std::string> lines(4);
+        std::vector<const char *> lines(4);
 
         for (int i = 0; i < 3; i++) {
             std::getline(*fin, line);
-            lines[i] = line;
+            lines[i] = line.c_str();
         }
 
         return lines;
@@ -310,7 +326,7 @@ class FASTAParser : public DataParser<Read> {
 
 // Configure the data pipeline appropriately according to the config file
 // T-dataType, K-cacheKey, V-cacheValue
-void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::string, std::string> *pipe) {
+void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char *, const char *> *pipe) {
     std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
     std::shared_ptr<InterleavedIOScheduler<Read>> io;
     io = std::make_shared<InterleavedIOScheduler<Read>>();
@@ -319,22 +335,22 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
      * Cache Parameters
      */
 
-    std::shared_ptr<CacheIndex<std::string, std::string> > c;
-    c = std::make_shared<DummyCache<std::string, std::string> >();
+    std::shared_ptr<CacheIndex<const char *, const char *> > c;
+    c = std::make_shared<DummyCache<const char *, const char *> >();
     if (cfp.contains("cache_policy")) {
         std::string cache = cfp.get_val("cache_policy");
         if (cache == "lru") {
-            c = std::make_shared<LRUCache<std::string, std::string> >();
+            c = std::make_shared<LRUCache<const char *, const char *> >();
         } else if (cache == "mru") {
-            c = std::make_shared<MRUCache<std::string, std::string> >();
+            c = std::make_shared<MRUCache<const char *, const char *> >();
         }
 
         if (cfp.contains("cache_decorator")) {
             std::string dec = cfp.get_val("cache_decorator");
-            std::shared_ptr<CacheDecorator<std::string, std::string> > w;
+            std::shared_ptr<CacheDecorator<const char *, const char *> > w;
 
             if (dec == "bloom_filter") {
-                w = std::make_shared<BFECache<std::string, std::string> >();
+                w = std::make_shared<BFECache<const char *, const char *> >();
                 w->set_cache(c);
             }
 
@@ -364,15 +380,17 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
 
     if (cfp.contains("hash_func")) {
         std::string hash_func = cfp.get_val("hash_func");
-        if (hash_func == "double") {
+        if (hash_func == "single") {
+            h = std::make_shared<PrefixHasher>();
+        } else if (hash_func == "double") {
             h = std::make_shared<DoublePrefixHasher>();
         } else if (hash_func == "triple") {
             h = std::make_shared<TriplePrefixHasher>();
         } else if (hash_func == "gc") {
-            h = std::make_shared<GCHasher>(4);
+            h = std::make_shared<GCHasher>();
         } else {
-            // default is single prefix, also specified by "single"
-            h = std::make_shared<PrefixHasher>();
+            // default is no partition hashing
+            h = std::make_shared<NOPHasher>();
         }
     } else {
         h = std::make_shared<NOPHasher>();
@@ -445,7 +463,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, std::strin
         }
     }
 
-    std::shared_ptr<DataProcessor<Read, std::string, std::string> > r;
+    std::shared_ptr<DataProcessor<Read, const char *, const char *> > r;
     r = std::make_shared<FASTQProcessor>();
     if (cfp.get_bool_val("retag")) {
         r = std::make_shared<RetaggingProcessor>();

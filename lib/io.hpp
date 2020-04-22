@@ -40,6 +40,7 @@ class TimeoutException : public std::exception {
 template<typename T>
 class DataParser {
 public:
+    virtual ~DataParser(){};
     // parse from an istream (can add more input sources later)
     virtual T _parsing_fn(const std::shared_ptr<std::istream> &) = 0;
 };
