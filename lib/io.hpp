@@ -38,14 +38,13 @@ namespace SeAlM {
  */
 
 // T - sequence Type (string, vector, etc.)
-    template<typename T>
-    class DataParser {
-    public:
-        virtual ~DataParser() {};
-
-        // parse from an istream (can add more input sources later)
-        virtual T _parsing_fn(const std::shared_ptr<std::istream> &) = 0;
-    };
+template<typename T>
+class DataParser {
+public:
+    virtual ~DataParser(){};
+    // parse from an istream (can add more input sources later)
+    virtual void _parsing_fn(const std::shared_ptr<std::istream> &in, T* out) = 0;
+};
 
 
 /*
@@ -302,9 +301,10 @@ namespace SeAlM {
         }
     }
 
-    template<typename T>
-    T InterleavedIOScheduler<T>::parse_single() {
-        T data = _parser->_parsing_fn(_in_streams[_read_head]);
+template<typename T>
+T InterleavedIOScheduler<T>::parse_single() {
+    T data;
+    _parser->_parsing_fn(_in_streams[_read_head], &data);
 
         if (_in_streams[_read_head]->eof()) {
             log_info("File " + _inputs[_read_head].second + " exhausted.");
@@ -320,8 +320,10 @@ namespace SeAlM {
     std::vector<T> InterleavedIOScheduler<T>::parse_multi(uint64_t n) {
         std::vector<T> data;
 
-        for (uint64_t i = 0; i < n; i++) {
-            data.push_back(_parser->_parsing_fn(_in_streams[_read_head]));
+    for (uint64_t i = 0; i < n; i++) {
+        T datum;
+        _parser->_parsing_fn(_in_streams[_read_head], &datum);
+        data.push_back(datum);
 
             if (_in_streams[_read_head]->eof()) {
                 log_info("File " + _inputs[_read_head].second + " exhausted.");

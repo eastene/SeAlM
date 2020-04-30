@@ -276,7 +276,7 @@ class CompreesedFASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM:
     SeAlM::PreHashedString _postprocess_fn(SeAlM::Read &data, SeAlM::PreHashedString &value) override {
         return value;
     }
-};
+} [[maybe_unused]];
 
 
 class RetaggingProcessor : public FASTQProcessor {
@@ -495,7 +495,7 @@ void prep_experiment(SeAlM::ConfigParser &cfp,
     }
         // TODO: allow compression and retagging
     else if (cfp.get_bool_val("store_bin")) {
-        r = std::make_shared<CompreesedFASTQProcessor>();
+        r = std::make_shared<CompressedFASTQProcessor>();
     }
     pipe->set_processor(r);
 
