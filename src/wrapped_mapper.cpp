@@ -47,7 +47,7 @@ void WrappedMapper::initialize_alignment() {
     _align_calls = 0;
 }
 
-WrappedMapper::WrappedMapper(CLIOptions &opts) {
+WrappedMapper::WrappedMapper(SeAlM::CLIOptions &opts) {
     // extract necessary parameters
     _params.input_file_pattern = opts.input_file_pattern;
     _params.data_dir = opts.data_dir;
@@ -97,7 +97,7 @@ WrappedMapper::WrappedMapper(CLIOptions &opts) {
     }
 }
 
-WrappedMapper::WrappedMapper(ConfigParser &configs) {
+WrappedMapper::WrappedMapper(SeAlM::ConfigParser &configs) {
 
     if (!configs.contains("reference")) {
         std::cout << "No reference file specified. Aborting." << std::endl;
@@ -184,7 +184,7 @@ void WrappedMapper::run_alignment() {
     double elapsed_time = 0.0;
     long this_bucket = 0;
 
-    std::vector<const char*> alignments(_bucket_size);
+    std::vector<SeAlM::PreHashedString> alignments(_bucket_size);
     initialize_alignment();
 
     std::ofstream mfile;
@@ -208,10 +208,10 @@ void WrappedMapper::run_alignment() {
     elapsed_time = p.call_aligner(_command, next_bucket, &alignments); // call once without timing to load reference
     std::cout << "Reference Load Time: " << elapsed_time << "s\n";
 
-    long start = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+    long start = std::chrono::duration_cast<SeAlM::Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     try {
         while (true) {
-            long batch_start = std::chrono::duration_cast<Mills>(
+            long batch_start = std::chrono::duration_cast<SeAlM::Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
 
             this_bucket = next_bucket.size();
@@ -227,7 +227,7 @@ void WrappedMapper::run_alignment() {
 
             auto write_future = _pipe.write_async(alignments);
 
-            long batch_end = std::chrono::duration_cast<Mills>(
+            long batch_end = std::chrono::duration_cast<SeAlM::Mills>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
 
             // write_future.wait();
@@ -263,18 +263,18 @@ void WrappedMapper::run_alignment() {
 
             write_future.wait();
         }
-    } catch (RequestToEmptyStorageException &rtese) {
+    } catch (SeAlM::RequestToEmptyStorageException &rtese) {
         // update state
         _align_calls++;
         _reads_aligned += alignments.size();
 
-        long batch_start = std::chrono::duration_cast<Mills>(
+        long batch_start = std::chrono::duration_cast<SeAlM::Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
 
         auto write_future = _pipe.write_async(alignments);
         write_future.wait();
 
-        long batch_end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+        long batch_end = std::chrono::duration_cast<SeAlM::Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         _process_time += (batch_end - batch_start) / 1000.00;
         if (mfile)
@@ -284,7 +284,7 @@ void WrappedMapper::run_alignment() {
     // stop reading (in case of exception above) and flush output buffer
     _pipe.close();
 
-    long end = std::chrono::duration_cast<Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
+    long end = std::chrono::duration_cast<SeAlM::Mills>(std::chrono::system_clock::now().time_since_epoch()).count();
     _total_time = (end - start) / 1000.00;
 
     if (!_metric_file.empty()) {

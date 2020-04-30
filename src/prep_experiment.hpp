@@ -7,12 +7,13 @@
 
 #include "../lib/config.hpp"
 #include "../lib/pipeline.hpp"
+#include "../lib/string.h"
 
 /*
- * READ ORDERING
+ * Orderings
  */
-struct ReadOrdering : public ValueOrdering<std::pair<uint64_t, Read> > {
-    bool operator()(const std::pair<uint64_t, Read> &l, const std::pair<uint64_t, Read> &r) {
+struct ReadOrdering : public SeAlM::ValueOrdering<std::pair<uint64_t, SeAlM::Read> > {
+    bool operator()(const std::pair<uint64_t, SeAlM::Read> &l, const std::pair<uint64_t, SeAlM::Read> &r) {
         return l.second[1] < r.second[1];
     }
 };
@@ -21,20 +22,32 @@ struct ReadOrdering : public ValueOrdering<std::pair<uint64_t, Read> > {
  * PREFIX HASHING
  */
 
-class NOPHasher : public DataHasher<std::pair<uint64_t, Read> > {
+class NOPHasher : public SeAlM::DataHasher<std::pair<uint64_t, SeAlM::Read> > {
 public:
 
-    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) override {
         return 0;
     }
 
     uint64_t _required_table_width() override { return 1; }
 };
 
-class PrefixHasher : public DataHasher<std::pair<uint64_t, Read> > {
+class CacheAwareHasher : public SeAlM::DataHasher<std::pair<uint64_t, SeAlM::Read> > {
+protected:
+    uint64_t _blocks=16;
+
+public:
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) override {
+        return data.second[1].get_hash() % _blocks;
+    }
+
+    uint64_t _required_table_width() override { return _blocks; }
+};
+
+class PrefixHasher : public SeAlM::DataHasher<std::pair<uint64_t, SeAlM::Read> > {
 public:
 
-    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) override {
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) override {
         switch (data.second[1][0]) {
             case 'A':
                 return 0;
@@ -54,7 +67,7 @@ public:
 
 class DoublePrefixHasher : public PrefixHasher {
 public:
-    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) final {
         uint64_t hash = 0;
         switch (data.second[1][1]) {
             case 'A':
@@ -100,7 +113,7 @@ public:
 
 class TriplePrefixHasher : public PrefixHasher {
 public:
-    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) final {
         uint64_t hash = 0b0;
         switch (data.second[1][0]) {
             case 'A':
@@ -156,7 +169,7 @@ public:
     uint64_t _required_table_width() final { return 64; }
 };
 
-class GCHasher : public DataHasher<std::pair<uint64_t, Read> > {
+class GCHasher : public SeAlM::DataHasher<std::pair<uint64_t, SeAlM::Read> > {
 private:
     uint64_t _bins;
     std::vector<float> _limits;
@@ -181,11 +194,11 @@ public:
         }
     }
 
-    uint64_t _hash_fn(const std::pair<uint64_t, Read> &data) final {
+    uint64_t _hash_fn(const std::pair<uint64_t, SeAlM::Read> &data) final {
         uint32_t gc_count = 0;
         uint8_t val = 0;
         float gc_content = 0.0;
-        int len = strlen(data.second[1]);
+        int len = data.second[1].size();
         for (int i = 0; i < len; i++) {
             // Using ascii values of A,G,C,T, and N
             // N is not counted as GC
@@ -215,29 +228,29 @@ public:
  * PROCESSORS
  */
 
-class FASTQProcessor : public DataProcessor<Read, const char *, const char *> {
+class FASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> {
     /*
      * Key Extraction Functions
      */
-    const char *_extract_key_fn(Read &data) final {
+    SeAlM::PreHashedString _extract_key_fn(SeAlM::Read &data) final {
         return data[1];
     }
 
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) override {
+    SeAlM::PreHashedString _postprocess_fn(SeAlM::Read &data, SeAlM::PreHashedString &value) override {
         return value;
     }
 };
 
-class CompreesedFASTQProcessor : public DataProcessor<Read, const char *, const char *> {
+class CompreesedFASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> {
     /*
      * Key Extraction Functions
      */
-    const char *_extract_key_fn(Read &data) final {
-        int len = strlen(data[1]);
-        char *bin = new char[(len/ 2) + data.size() % 2];
+    SeAlM::PreHashedString _extract_key_fn(SeAlM::Read &data) final {
+        int len = data[1].size();
+        char *bin = new char[(len / 2) + data.size() % 2];
         int j = 0;
         int i = 0;
         for (; i < len - 1; i += 2) {
@@ -253,14 +266,14 @@ class CompreesedFASTQProcessor : public DataProcessor<Read, const char *, const 
             bin[j] |= data[1][i] & 0b00000111;
         }
 
-        // std::string out (bin);
-        return bin;
+        SeAlM::PreHashedString out(bin);
+        return out;
     }
 
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) override {
+    SeAlM::PreHashedString _postprocess_fn(SeAlM::Read &data, SeAlM::PreHashedString &value) override {
         return value;
     }
 };
@@ -270,21 +283,23 @@ class RetaggingProcessor : public FASTQProcessor {
     /*
      * Postprocessing functions
      */
-    const char *_postprocess_fn(Read &data, const char *&value) final {
+    SeAlM::PreHashedString _postprocess_fn(SeAlM::Read &data, SeAlM::PreHashedString &value) final {
         std::stringstream ss;
-        std::string tag_line(data[0]);
-        std::string tag = tag_line.substr(1, tag_line.find(' ') - 1);
-        std::string val(value);
-        unsigned long sp1 = val.find('\t');
+        SeAlM::PreHashedString out;
+        SeAlM::PreHashedString tag_line(data[0]);
+        SeAlM::PreHashedString  tag = tag_line.substr(1, tag_line.find(' ') - 1);
+        unsigned long sp1 = value.find('\t');
         // TODO: replace qual score with one from this read
         //unsigned long sp2 = alignment.find('\t', 9);
-        std::string untagged = val.substr(sp1);
+        std::string untagged = value.substr(sp1, value.size());
 
         ss << tag;
         ss << "\t";
         ss << untagged;
 
-        return ss.str().c_str();
+        std::string tmp = ss.str();
+        out.set_string(tmp, false);
+        return out;
     }
 };
 
@@ -292,33 +307,40 @@ class RetaggingProcessor : public FASTQProcessor {
  *  PARSERS
  */
 
-class FASTQParser : public DataParser<Read> {
+class FASTQParser : public SeAlM::DataParser<SeAlM::Read> {
 
-    Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
+    SeAlM::Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        std::vector<const char *> lines(4);
+        SeAlM::Read lines(4);
 
-        for (int i = 0; i < 4; i++) {
-            std::getline(*fin, line);
-            lines[i] = line.c_str();
-        }
+        // unroll loop (read 4 lines)
+        std::getline(*fin, line);
+        lines[0].set_string(line, false);
+        std::getline(*fin, line);
+        lines[1].set_string(line, true); // <- read sequence
+        std::getline(*fin, line);
+        lines[2].set_string(line, false);
+        std::getline(*fin, line);
+        lines[3].set_string(line, false);
+
 
         return lines;
     }
 };
 
-class FASTAParser : public DataParser<Read> {
+class FASTAParser : public SeAlM::DataParser<SeAlM::Read> {
 
-    Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
+    SeAlM::Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        std::vector<const char *> lines(4);
+        SeAlM::Read lines(2);
 
-        for (int i = 0; i < 3; i++) {
-            std::getline(*fin, line);
-            lines[i] = line.c_str();
-        }
+        // TODO: enable reading wrapped FASTA files (multi-line sequences)
+        std::getline(*fin, line);
+        lines[0].set_string(line, false);
+        std::getline(*fin, line);
+        lines[1].set_string(line, true); // <- read sequence
 
         return lines;
     }
@@ -326,31 +348,32 @@ class FASTAParser : public DataParser<Read> {
 
 // Configure the data pipeline appropriately according to the config file
 // T-dataType, K-cacheKey, V-cacheValue
-void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char *, const char *> *pipe) {
-    std::shared_ptr<OrderedSequenceStorage<std::pair<uint64_t, Read> > > bb;
-    std::shared_ptr<InterleavedIOScheduler<Read>> io;
-    io = std::make_shared<InterleavedIOScheduler<Read>>();
+void prep_experiment(SeAlM::ConfigParser &cfp,
+                     SeAlM::BucketedPipelineManager<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> *pipe) {
+    std::shared_ptr<SeAlM::OrderedSequenceStorage<std::pair<uint64_t, SeAlM::Read> > > bb;
+    std::shared_ptr<SeAlM::InterleavedIOScheduler<SeAlM::Read> > io;
+    io = std::make_shared<SeAlM::InterleavedIOScheduler<SeAlM::Read> >();
 
     /*
      * Cache Parameters
      */
 
-    std::shared_ptr<CacheIndex<const char *, const char *> > c;
-    c = std::make_shared<DummyCache<const char *, const char *> >();
+    std::shared_ptr<SeAlM::CacheIndex<SeAlM::PreHashedString, SeAlM::PreHashedString> > c;
+    c = std::make_shared<SeAlM::DummyCache<SeAlM::PreHashedString, SeAlM::PreHashedString> >();
     if (cfp.contains("cache_policy")) {
         std::string cache = cfp.get_val("cache_policy");
         if (cache == "lru") {
-            c = std::make_shared<LRUCache<const char *, const char *> >();
+            c = std::make_shared<SeAlM::LRUCache<SeAlM::PreHashedString, SeAlM::PreHashedString> >();
         } else if (cache == "mru") {
-            c = std::make_shared<MRUCache<const char *, const char *> >();
+            c = std::make_shared<SeAlM::MRUCache<SeAlM::PreHashedString, SeAlM::PreHashedString> >();
         }
 
         if (cfp.contains("cache_decorator")) {
             std::string dec = cfp.get_val("cache_decorator");
-            std::shared_ptr<CacheDecorator<const char *, const char *> > w;
+            std::shared_ptr<SeAlM::CacheDecorator<SeAlM::PreHashedString, SeAlM::PreHashedString> > w;
 
             if (dec == "bloom_filter") {
-                w = std::make_shared<BFECache<const char *, const char *> >();
+                w = std::make_shared<SeAlM::BFECache<SeAlM::PreHashedString, SeAlM::PreHashedString> >();
                 w->set_cache(c);
             }
 
@@ -363,13 +386,13 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
     /*
      * Storage Parameters
      */
-    std::shared_ptr<DataHasher<std::pair<uint64_t, Read> > > h;
+    std::shared_ptr<SeAlM::DataHasher<std::pair<uint64_t, SeAlM::Read> > > h;
     if (cfp.contains("max_chain") && cfp.get_long_val("max_chain") == 1) {
-        bb = std::make_shared<BufferedSortedChain<std::pair<uint64_t, Read> > >();
+        bb = std::make_shared<SeAlM::BufferedSortedChain<std::pair<uint64_t, SeAlM::Read> > >();
         ReadOrdering order;
         bb->set_ordering(order);
     } else {
-        bb = std::make_shared<BufferedBuckets<std::pair<uint64_t, Read> > >();
+        bb = std::make_shared<SeAlM::BufferedBuckets<std::pair<uint64_t, SeAlM::Read> > >();
     }
 
     if (cfp.contains("num_buckets"))
@@ -388,6 +411,8 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
             h = std::make_shared<TriplePrefixHasher>();
         } else if (hash_func == "gc") {
             h = std::make_shared<GCHasher>();
+        } else if (hash_func == "cache_aware"){
+            h = std::make_shared<CacheAwareHasher>();
         } else {
             // default is no partition hashing
             h = std::make_shared<NOPHasher>();
@@ -399,7 +424,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
     bb->set_data_properties(h);
 
     if (cfp.get_val("chain_switch") == "random") {
-        bb->set_chain_switch_mode(ChainSwitch::RANDOM);
+        bb->set_chain_switch_mode(SeAlM::ChainSwitch::RANDOM);
     }
 
     bb->register_observer(c);
@@ -428,7 +453,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
     if (cfp.contains("data_dir")) {
         try {
             io->from_dir(cfp.get_val("data_dir"));
-        } catch (IOAssumptionFailedException &e) {
+        } catch (SeAlM::IOAssumptionFailedException &e) {
             std::cout << "No files to align. Stopping." << std::endl;
             exit(0);
         }
@@ -437,7 +462,7 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
         io->from_stdin(out);
     }
 
-    std::shared_ptr<DataParser<Read> > dr;
+    std::shared_ptr<SeAlM::DataParser<SeAlM::Read> > dr;
     dr = std::make_shared<FASTQParser>();
     if (cfp.contains("file_type")) {
         if (cfp.get_val("file_type") == "fasta") {
@@ -455,15 +480,15 @@ void prep_experiment(ConfigParser &cfp, BucketedPipelineManager<Read, const char
     if (cfp.contains("compression")) {
         std::string cmp = cfp.get_val("compression");
         if (cmp == "full") {
-            pipe->set_compression_level(FULL);
+            pipe->set_compression_level(SeAlM::FULL);
         } else if (cmp == "cross") {
-            pipe->set_compression_level(CROSS);
+            pipe->set_compression_level(SeAlM::CROSS);
         } else {
-            pipe->set_compression_level(NONE);
+            pipe->set_compression_level(SeAlM::NONE);
         }
     }
 
-    std::shared_ptr<DataProcessor<Read, const char *, const char *> > r;
+    std::shared_ptr<SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> > r;
     r = std::make_shared<FASTQProcessor>();
     if (cfp.get_bool_val("retag")) {
         r = std::make_shared<RetaggingProcessor>();

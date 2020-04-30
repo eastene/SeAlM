@@ -33,7 +33,7 @@ ExternalProject_Add(cpp-subprocess
 include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
 link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
 
-add_executable(SeAlM src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp lib/types.hpp lib/storage.hpp lib/io.hpp lib/config.hpp lib/logging.hpp src/prep_experiment.hpp lib/signaling.hpp lib/process.h)
+add_executable(SeAlM src/main.cpp src/wrapped_mapper.cpp src/wrapped_mapper.hpp lib/cache.hpp src/mapping_utils.hpp lib/pipeline.hpp lib/types.hpp lib/storage.hpp lib/io.hpp lib/config.hpp lib/logging.hpp src/prep_experiment.hpp lib/signaling.hpp lib/process.h lib/string.h)
 add_executable(test_SeAlM test/test_main.cpp test/test_storage.cpp lib/storage.hpp test/test_cache.cpp lib/io.hpp lib/logging.hpp test/test_io.cpp test/test_pipeline.cpp test/test_config.cpp)
 
 add_dependencies(SeAlM cpp-subprocess)

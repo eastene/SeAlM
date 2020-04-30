@@ -14,6 +14,7 @@
 #include <fstream>
 #include <chrono>
 
+#include "../lib/string.h"
 #include "../lib/cache.hpp"
 #include "../lib/pipeline.hpp"
 #include "../lib/types.hpp"
@@ -45,8 +46,8 @@ private:
     std::string _command;
 
     // Pipeline manager
-    PipelineParams _params;
-    BucketedPipelineManager<Read, const char*, const char*> _pipe;
+    SeAlM::PipelineParams _params;
+    SeAlM::BucketedPipelineManager<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> _pipe;
 
     // Process Manager
     MapperProcess p;
@@ -71,9 +72,9 @@ private:
     void initialize_alignment();
 
 public:
-    explicit WrappedMapper(CLIOptions &opts);
+    explicit WrappedMapper(SeAlM::CLIOptions &opts);
 
-    explicit WrappedMapper(ConfigParser &configs);
+    explicit WrappedMapper(SeAlM::ConfigParser &configs);
 
     void run_alignment();
 

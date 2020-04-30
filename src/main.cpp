@@ -4,8 +4,8 @@
 #include "../lib/config.hpp"
 
 int main(int argc, char **argv) {
-    CLIOptions opts;
-    ConfigParser cfp;
+    SeAlM::CLIOptions opts;
+    SeAlM::ConfigParser cfp;
 
     int c;
 

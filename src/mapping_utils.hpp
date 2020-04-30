@@ -13,12 +13,12 @@
 #include "wrapped_mapper.hpp"
 #include "../lib/process.h"
 
-class MapperProcess : public SubProccessAdapter {
+class MapperProcess : public SeAlM::SubProccessAdapter {
 protected:
     double
-    align_batch(std::string &command, std::vector<Read> &batch, std::vector<const char*> *alignments) {
+    align_batch(std::string &command, std::vector<SeAlM::Read> &batch, std::vector<SeAlM::PreHashedString> *alignments) {
         std::stringstream ss;
-        for (Read read : batch) {
+        for (SeAlM::Read read : batch) {
             ss << read[0] << '\n';
             ss << read[1] << '\n';
             ss << read[2] << '\n';
@@ -27,18 +27,18 @@ protected:
 
         popen(command);
 
-        long align_start = std::chrono::duration_cast<Mills>(
+        long align_start = std::chrono::duration_cast<SeAlM::Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
 
         communicate_and_parse(ss, alignments);
 
-        long align_end = std::chrono::duration_cast<Mills>(
+        long align_end = std::chrono::duration_cast<SeAlM::Mills>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
         return (align_end - align_start) / 1000.00;
     }
 
 public:
-    double call_aligner(std::string &command, std::vector<Read> &reduced_batch, std::vector<const char*> *alignments) {
+    double call_aligner(std::string &command, std::vector<SeAlM::Read> &reduced_batch, std::vector<SeAlM::PreHashedString> *alignments) {
         return align_batch(command, reduced_batch, alignments);
     }
 };
