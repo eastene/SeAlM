@@ -244,7 +244,7 @@ class FASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashed
     }
 };
 
-class CompreesedFASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> {
+class CompressedFASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM::PreHashedString, SeAlM::PreHashedString> {
     /*
      * Key Extraction Functions
      */
@@ -276,7 +276,7 @@ class CompreesedFASTQProcessor : public SeAlM::DataProcessor<SeAlM::Read, SeAlM:
     SeAlM::PreHashedString _postprocess_fn(SeAlM::Read &data, SeAlM::PreHashedString &value) override {
         return value;
     }
-} [[maybe_unused]];
+};
 
 
 class RetaggingProcessor : public FASTQProcessor {
@@ -309,40 +309,33 @@ class RetaggingProcessor : public FASTQProcessor {
 
 class FASTQParser : public SeAlM::DataParser<SeAlM::Read> {
 
-    SeAlM::Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
+    void _parsing_fn(const std::shared_ptr<std::istream> &fin, SeAlM::Read *out) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        SeAlM::Read lines(4);
 
         // unroll loop (read 4 lines)
         std::getline(*fin, line);
-        lines[0].set_string(line, false);
+        out->operator[](0).set_string(line, false);
         std::getline(*fin, line);
-        lines[1].set_string(line, true); // <- read sequence
+        out->operator[](1).set_string(line, true); // <- read sequence
         std::getline(*fin, line);
-        lines[2].set_string(line, false);
+        out->operator[](2).set_string(line, false);
         std::getline(*fin, line);
-        lines[3].set_string(line, false);
-
-
-        return lines;
+        out->operator[](3).set_string(line, false);
     }
 };
 
 class FASTAParser : public SeAlM::DataParser<SeAlM::Read> {
 
-    SeAlM::Read _parsing_fn(const std::shared_ptr<std::istream> &fin) override {
+    void _parsing_fn(const std::shared_ptr<std::istream> &fin, SeAlM::Read *out) override {
         //TODO fix error of SIGSEGV when reading from pipe (move operator problem?)
         std::string line;
-        SeAlM::Read lines(2);
 
         // TODO: enable reading wrapped FASTA files (multi-line sequences)
         std::getline(*fin, line);
-        lines[0].set_string(line, false);
+        out->operator[](0).set_string(line, false);
         std::getline(*fin, line);
-        lines[1].set_string(line, true); // <- read sequence
-
-        return lines;
+        out->operator[](1).set_string(line, true);; // <- read sequence
     }
 };
 
